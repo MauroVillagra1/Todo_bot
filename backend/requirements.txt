@@ -1,0 +1,30 @@
+# Web framework
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+
+# Base de datos
+sqlalchemy==2.0.31
+alembic==1.13.2
+# psycopg2-binary NO funciona en Vercel — usar psycopg2 con libpq o asyncpg
+psycopg2-binary==2.9.10
+
+# Validación y configuración
+pydantic==2.9.2
+pydantic-settings==2.5.2
+python-dotenv==1.0.1
+
+# Autenticación JWT
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+python-multipart==0.0.9
+
+# Rate limiting
+slowapi==0.1.9
+
+# IA
+groq==0.9.0
+
+# Utilidades
+httpx==0.27.0
+python-dateutil==2.9.0

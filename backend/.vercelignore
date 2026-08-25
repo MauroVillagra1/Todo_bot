@@ -1,0 +1,12 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.local
+alembic/__pycache__/
+seed_horarios.py
+seed_utn.py
+seed.py
+seed_usuarios_v2.py
+*.log

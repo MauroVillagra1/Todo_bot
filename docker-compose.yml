@@ -1,0 +1,59 @@
+version: "3.9"
+
+services:
+  # ─── PostgreSQL con extensión pgvector ──────────────────────────────────────
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: asistente_uni_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-uni_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-uni_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-asistente_uni}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-uni_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Backend FastAPI ─────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: asistente_uni_backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-uni_user}:${POSTGRES_PASSWORD:-uni_pass}@db:5432/${POSTGRES_DB:-asistente_uni}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # ─── Frontend React + Vite ───────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: asistente_uni_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  postgres_data:
