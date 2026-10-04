@@ -62,8 +62,7 @@ def _error_visible(e: Exception) -> None:
     detalle = str(e).replace(url, "<DATABASE_URL>")[:300] if url else str(e)[:300]
     if not url:
         detalle = "Falta el secret DATABASE_URL (Settings → Secrets and variables → Actions). " + detalle
-    print(f"::error::{type(e).__name__}: {detalle}".replace("
-", " "))
+    print(f"::error::{type(e).__name__}: {detalle}".replace("\n", " "))
 
 
 if __name__ == "__main__":

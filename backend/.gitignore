@@ -36,3 +36,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Base PostgreSQL local de desarrollo (scripts/db_local.py)
+.pgdata/

@@ -11,7 +11,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        # .env.local (no se sube) pisa a .env: ahí va la base local de desarrollo
+        env_file=(".env", ".env.local"),
         env_file_encoding="utf-8",
         case_sensitive=False,
         # Variables viejas en un .env (ej. RATE_LIMIT_CHAT) no deben romper el arranque

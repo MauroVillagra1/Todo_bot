@@ -26,13 +26,25 @@ def _tsv(expresion: str) -> None:
     op.execute("CREATE INDEX ix_chunks_tsv ON chunks USING gin (tsv)")
 
 
+# Sin la extensión unaccent (Postgres embebido de desarrollo, pgserver): mismo resultado
+# para el español con translate()
+_CON_TILDE = "áéíóúüñàèìòùâêîôûäëïöÁÉÍÓÚÜÑÀÈÌÒÙÂÊÎÔÛÄËÏÖ"
+_SIN_TILDE = "aeiouunaeiouaeiouaeioAEIOUUNAEIOUAEIOUAEIO"
+
+
 def upgrade() -> None:
-    op.execute("CREATE EXTENSION IF NOT EXISTS unaccent")
+    hay_unaccent = op.get_bind().exec_driver_sql(
+        "SELECT 1 FROM pg_available_extensions WHERE name = 'unaccent'").first()
+    if hay_unaccent:
+        op.execute("CREATE EXTENSION IF NOT EXISTS unaccent")
+        cuerpo = "SELECT public.unaccent('public.unaccent'::regdictionary, $1)"
+    else:
+        cuerpo = f"SELECT translate($1, '{_CON_TILDE}', '{_SIN_TILDE}')"
     op.execute(
-        """
+        f"""
         CREATE OR REPLACE FUNCTION sin_tildes(text) RETURNS text
         LANGUAGE sql IMMUTABLE PARALLEL SAFE STRICT
-        AS $$ SELECT public.unaccent('public.unaccent'::regdictionary, $1) $$
+        AS $$ {cuerpo} $$
         """
     )
     _tsv("to_tsvector('spanish', sin_tildes(texto))")

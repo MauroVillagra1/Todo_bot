@@ -32,3 +32,6 @@ frontend/.vite/
 
 # Docker
 postgres_data/
+
+# Base PostgreSQL local de desarrollo (backend/scripts/db_local.py)
+.pgdata/

@@ -1,3 +1,6 @@
 # Solo para desarrollo/tests — no se instala en producción
 -r requirements-ingesta.txt
 pytest==8.4.2
+
+# Base PostgreSQL local sin instalar nada (scripts/db_local.py)
+pgserver==0.1.4
