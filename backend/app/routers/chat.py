@@ -31,7 +31,8 @@ class FuenteRespuesta(BaseModel):
 class ChatResponse(BaseModel):
     respuesta: str
     conversacion_id: str | None = None
-    # CONFIRMADA | PROBABLE | NO_CONFIRMADA | DESACTUALIZADA (RAG-03)
+    # CONFIRMADA | PROBABLE | NO_CONFIRMADA | DESACTUALIZADA (RAG-03);
+    # CONVERSACION (saludos) y ACLARACION (pide precisar) no llevan datos institucionales
     estado: str
     fuentes: list[FuenteRespuesta] = []
     fecha_informacion: str | None = None

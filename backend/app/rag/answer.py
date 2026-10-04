@@ -21,6 +21,7 @@ from app.ingest.classify import normalizar
 from app.models.cache import CacheRespuesta
 from app.models.informacion import Informacion
 from app.models.ingesta import Chunk
+from app.rag.conversacion import responder_conversacion
 from app.rag.horarios import responder_horario
 from app.rag.search import Resultado, buscar
 from app.services import llm
@@ -154,6 +155,12 @@ def responder(db: Session, pregunta: str, historial: list[dict]) -> dict:
 
 
 def _responder_sin_cache(db: Session, pregunta: str, historial: list[dict], anterior: str) -> dict:
+    # Saludos, agradecimientos, ayuda: respuestas fijas, sin LLM
+    charla = responder_conversacion(pregunta)
+    if charla:
+        incrementar(db, "conversacion")
+        return charla
+
     # Horarios: se responden con SQL sobre las grillas, sin LLM
     horario = responder_horario(db, pregunta, anterior)
     if horario:

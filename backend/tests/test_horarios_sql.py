@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from app.ingest.horarios import leer_grillas, normalizar_comision
+from app.ingest.horarios import leer_grillas, normalizar_comision, normalizar_materia
 from app.ingest.pipeline import guardar_grillas
 from app.models.horario import HorarioClase
 from app.models.informacion import Evidencia, Informacion
@@ -102,7 +102,7 @@ def test_abreviaturas_y_docente(base):
 
 def test_electivas_por_turno(base):
     r = responder(base, "¿Qué electivas hay a la noche?")
-    assert "FUNDAMENTOS DE INGENIERIA DE DATOS" in r["respuesta"]
+    assert "Fundamentos de ingenieria de datos" in r["respuesta"]
 
 
 def test_seguimiento_usa_la_comision_anterior(base):
@@ -183,3 +183,57 @@ def test_horario_desactualizado_no_se_usa(base):
     base.query(Informacion).update({"estado": "DESACTUALIZADA"})
     base.commit()
     assert responder(base, "¿Cuándo se dicta Redes de Datos?") is None
+
+
+# ── Nombres cortos, aclaración y conversación ─────────────────────────────────
+
+def _agregar(db, comision, materia, dia=2, inicio="19:00", fin="21:15", electiva=True):
+    doc = db.query(Documento).first()
+    db.add(HorarioClase(documento_id=doc.id, comision=comision, anio=int(comision[0]), plan="2023",
+                        turno="Noche", periodo="Segundo cuatrimestre", aula="159", dia=dia, inicio=inicio,
+                        fin=fin, materia=materia, materia_norm=normalizar_materia(materia), electiva=electiva))
+    db.commit()
+
+
+def test_nombre_corto_encuentra_la_materia(base):
+    _agregar(base, "3K05", "DISEÑO UX PARA PRODUCTOS DIGITALES", dia=4)
+    r = responder(base, "diseño ux")
+    assert "**3K05**" in r["respuesta"] and "Jueves 19:00 a 21:15" in r["respuesta"]
+
+
+def test_varias_materias_distintas_pide_aclaracion(base):
+    _agregar(base, "3K05", "DISEÑO UX PARA PRODUCTOS DIGITALES", dia=4)
+    _agregar(base, "3K05", "FUNDAMENTOS DEL DISEÑO UX/UI", dia=2)
+    r = responder(base, "¿Cuándo es diseño ux?")
+    assert r["estado"] == "ACLARACION" and r["fuentes"] == []
+    assert "- Diseño UX para productos digitales" in r["respuesta"]
+    assert "- Fundamentos del diseño UX/UI" in r["respuesta"]
+    # Con el nombre completo ya no pregunta
+    completo = responder(base, "¿Cuándo es diseño ux para productos digitales?")
+    assert completo["estado"] == "CONFIRMADA" and "Jueves" in completo["respuesta"]
+
+
+def test_misma_materia_escrita_distinto_no_pide_aclaracion(base):
+    _agregar(base, "1K01", "Algorit. y Est. De Datos", electiva=False)
+    _agregar(base, "1K02", "Algoritmos y Estructuras de Datos", dia=3, electiva=False)
+    r = responder(base, "¿Cuándo se dicta algoritmos y estructuras de datos?")
+    assert r["estado"] == "CONFIRMADA"
+    assert "**1K01**" in r["respuesta"] and "**1K02**" in r["respuesta"]
+
+
+@pytest.mark.parametrize("mensaje,contiene", [
+    ("Hola", "Soy UTNIA"),
+    ("buenas tardes!", "Soy UTNIA"),
+    ("¿Qué podés hacer?", "fuentes institucionales"),
+    ("gracias!!", "De nada"),
+    ("chau", "Hasta luego"),
+])
+def test_conversacion_basica(mensaje, contiene):
+    from app.rag.conversacion import responder_conversacion
+    r = responder_conversacion(mensaje)
+    assert contiene in r["respuesta"] and r["estado"] == "CONVERSACION"
+
+
+def test_saludo_con_pregunta_no_es_solo_conversacion():
+    from app.rag.conversacion import responder_conversacion
+    assert responder_conversacion("hola, ¿cuándo se dicta Redes de Datos?") is None

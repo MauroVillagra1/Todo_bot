@@ -15,9 +15,10 @@ const ROLES_DISPLAY = {
 }
 
 const PREGUNTAS_EJEMPLO = [
-  '¿Cuándo son las próximas mesas de examen?',
-  '¿Qué eventos organiza la carrera de Sistemas?',
-  '¿Cuándo abren las inscripciones?',
+  '¿Qué materias tengo los lunes en la 1K01?',
+  '¿Cuándo se dicta Análisis Matemático I?',
+  '¿Qué materias da Moyano?',
+  '¿Hay becas abiertas?',
 ]
 
 // La UI solo oculta el acceso: los permisos reales se validan en el backend

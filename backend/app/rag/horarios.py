@@ -35,6 +35,7 @@ ROMANOS = {"1": "i", "2": "ii", "3": "iii", "4": "iv", "5": "v"}
 _ES_ROMANO = {"i", "ii", "iii", "iv", "v"}
 ORDINALES = {"primer": 1, "primero": 1, "segundo": 2, "tercer": 3, "tercero": 3, "cuarto": 4, "quinto": 5}
 MAX_LINEAS = 45
+MAX_OPCIONES = 6
 _ESTADOS_EXCLUIDOS = (E.DESACTUALIZADA, E.REEMPLAZADA)
 
 
@@ -51,8 +52,28 @@ def _coincide(q: str, m: str) -> bool:
     return q.startswith(m) or m.startswith(q)
 
 
+# Palabras de la pregunta que no son parte del nombre de una materia
+RUIDO = {
+    "que", "cual", "cuales", "cuando", "como", "donde", "hay", "es", "son", "se", "me", "mi", "mis",
+    "esta", "este", "estan", "ano", "plan", "cuatrimestre", "primer", "primero", "segundo", "tercer",
+    "tercero", "cuarto", "quinto", "manana", "tarde", "noche", "quiero", "necesito", "saber", "sabes",
+    "por", "favor", "decime", "dime", "busco", "sobre", "hoy", "semana", "todas",
+    "todos", "o", "u", "al", "las", "los", "lo", "le", "les", "yo", "vos", "tu", "su", "sus",
+}
+
+
+def _claves(materia_norm: str) -> list[str]:
+    return [t for t in _tokens(materia_norm) if t not in VACIAS and (len(t) >= 2 or t in _ES_ROMANO)]
+
+
+def _contenido(preg: list[str]) -> list[str]:
+    """Palabras de la pregunta que podrían ser parte del nombre de la materia."""
+    return [t for t in preg if t not in RUIDO and t not in VACIAS and t not in PALABRAS_HORARIO
+            and t not in DIAS and t not in _ES_ROMANO and not re.fullmatch(r"\d+k?\d*|20\d\d", t)]
+
+
 def _puntaje(preg: list[str], materia_norm: str) -> float:
-    claves = [t for t in _tokens(materia_norm) if t not in VACIAS and (len(t) >= 2 or t in _ES_ROMANO)]
+    claves = _claves(materia_norm)
     if not claves:
         return 0.0
     # El número de la materia tiene que coincidir: "Análisis Matemático 1" no es "II"
@@ -62,9 +83,34 @@ def _puntaje(preg: list[str], materia_norm: str) -> float:
         return 0.0
     sin_numero = [t for t in claves if t not in _ES_ROMANO]
     acertadas = sum(any(_coincide(q, t) for q in preg) for t in sin_numero)
-    if acertadas < min(2, len(sin_numero)):
-        return 0.0
-    return acertadas / len(sin_numero)
+    cobertura_materia = acertadas / len(sin_numero)
+    if acertadas >= min(2, len(sin_numero)) and cobertura_materia >= 0.6:
+        return cobertura_materia
+    # La pregunta nombra la materia en forma corta ("diseño ux" → "Diseño UX para productos
+    # digitales"): todas sus palabras de contenido están en la materia
+    contenido = _contenido(preg)
+    if contenido and sum(len(t) for t in contenido) >= 4 \
+            and all(any(_coincide(q, t) for t in sin_numero) for q in contenido):
+        return 0.6 + 0.3 * cobertura_materia
+    return 0.0
+
+
+def _equivalentes(a: str, b: str) -> bool:
+    """Misma materia escrita distinto ("algorit y est de datos" / "algoritmos y estructuras de datos")."""
+    ca, cb = _claves(a), _claves(b)
+    return bool(ca and cb) and all(any(_coincide(x, y) for y in cb) for x in ca) \
+        and all(any(_coincide(y, x) for x in ca) for y in cb)
+
+
+def _agrupar(materias: list[str]) -> list[list[str]]:
+    grupos: list[list[str]] = []
+    for m in sorted(materias, key=len, reverse=True):
+        grupo = next((g for g in grupos if _equivalentes(g[0], m)), None)
+        if grupo:
+            grupo.append(m)
+        else:
+            grupos.append([m])
+    return grupos
 
 
 def _filtros(pregunta: str) -> dict:
@@ -135,6 +181,47 @@ def _docentes_de(db: Session, pregunta: str) -> list[str]:
     return sorted(p for p in personas if all(n in p.split() for n in nombres))
 
 
+_SIGLAS = {"UX", "UI", "UX/UI", "IA", "TIC", "TICS", "IT", "I", "II", "III", "IV", "V", "GIS", "SIG"}
+
+
+def bonito(nombre: str) -> str:
+    """'DISEÑO UX PARA PRODUCTOS DIGITALES' → 'Diseño UX para productos digitales'."""
+    if not nombre.isupper():
+        return nombre
+    palabras = [p if p in _SIGLAS else p.lower() for p in nombre.split()]
+    if palabras and palabras[0] not in _SIGLAS:
+        palabras[0] = palabras[0].capitalize()
+    return " ".join(palabras)
+
+
+def _materia_exacta(pregunta: str, materias: list[str]) -> bool:
+    """La pregunta es solo el nombre de una materia ("diseño ux", "Redes de Datos")."""
+    contenido = _contenido(_tokens(pregunta))
+    return bool(materias) and len(contenido) == len([t for t in _tokens(pregunta) if t not in VACIAS])
+
+
+def _aclaracion(db: Session, grupos: list[list[str]]) -> dict:
+    """Pide precisar cuál materia, con opciones y un ejemplo de pregunta."""
+    opciones = []  # (nombre, una comisión donde se dicta)
+    for grupo in grupos:
+        filas = db.query(HorarioClase.materia, HorarioClase.comision).filter(HorarioClase.materia_norm.in_(grupo)).all()
+        cuenta: dict[str, int] = defaultdict(int)
+        for m, _ in filas:
+            cuenta[m] += 1
+        if cuenta:
+            nombre = max(cuenta, key=lambda g: (cuenta[g], sum(not c.isascii() for c in g)))
+            opciones.append((bonito(nombre), next((c for _, c in filas if c), None)))
+    opciones.sort()
+    lineas = ["Encontré varias materias que coinciden. ¿A cuál te referís?", ""]
+    lineas += [f"- {n}" for n, _ in opciones[:MAX_OPCIONES]]
+    if len(opciones) > MAX_OPCIONES:
+        lineas.append(f"- …y {len(opciones) - MAX_OPCIONES} más (probá con un nombre más completo)")
+    ejemplo, comision = opciones[0]
+    lineas += ["", f"Por ejemplo: “¿Cuándo se dicta {ejemplo}?”"
+               + (f" o “¿Qué días tiene {ejemplo} la {comision}?”" if comision else "")]
+    return {"respuesta": "\n".join(lineas), "estado": "ACLARACION", "fuentes": [], "fecha_informacion": None}
+
+
 def cuatrimestre_terminado(hoy: date | None = None) -> str:
     """El cuatrimestre que no está en curso: de agosto a diciembre ya pasó el primero."""
     hoy = hoy or date.today()
@@ -154,8 +241,13 @@ def responder_horario(db: Session, pregunta: str, anterior: str = "", hoy: date 
 
     if not (f["comisiones"] or materias or docentes or (f["electivas"] and (f["anio"] or f["turno"]))):
         return None
-    if not f["es_horario"] and not f["comisiones"]:
+    if not f["es_horario"] and not f["comisiones"] and not _materia_exacta(pregunta, materias):
         return None  # "¿Hay becas para sistemas de información?" no es de horarios
+
+    # Varias materias distintas coinciden y no hay comisión que acote: preguntar a cuál se refiere
+    grupos = _agrupar(materias)
+    if len(grupos) > 1 and not f["comisiones"] and not docentes:
+        return _aclaracion(db, grupos)
 
     consulta = _vigentes(db)
     if f["comisiones"]:
@@ -219,7 +311,7 @@ def responder_horario(db: Session, pregunta: str, anterior: str = "", hoy: date 
     for h, _ in filas:
         grafias[h.materia_norm][h.materia] += 1
     nombre_de = {
-        norma: max(cuenta, key=lambda g: (cuenta[g], sum(not c.isascii() for c in g)))
+        norma: bonito(max(cuenta, key=lambda g: (cuenta[g], sum(not c.isascii() for c in g))))
         for norma, cuenta in grafias.items()
     }
     varias_materias = len(nombre_de) > 1 or f["electivas"] or bool(docentes)
