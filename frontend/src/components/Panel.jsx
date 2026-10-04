@@ -11,9 +11,9 @@ import {
   listarFuentes, listarUsuarios, obtenerResumen,
 } from '../api'
 
-const campo = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500'
-const tarjeta = 'bg-white border border-gray-200 rounded-xl p-5'
-const boton = 'bg-primary-600 hover:bg-primary-700 disabled:bg-gray-300 text-white px-4 py-2 rounded-lg text-sm font-medium'
+const campo = 'w-full bg-[#141417] border border-[#232327] rounded-xl px-3 py-2 text-sm text-[#f4f4f5] placeholder-[#4b4b53] focus:outline-none focus:border-[#e8592e]/50 transition-colors'
+const tarjeta = 'bg-[#0d0d10] border border-[#1e1e22] rounded-2xl p-5'
+const boton = 'bg-[#e8592e] hover:bg-[#f2703f] disabled:bg-[#232327] disabled:text-[#4b4b53] text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors'
 
 function fechaHora(iso) {
   return iso ? new Date(iso).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : 'nunca'
@@ -42,9 +42,9 @@ const METRICAS = [
 function Dato({ titulo, valor, detalle, alerta }) {
   return (
     <div className={`${tarjeta} !p-4`}>
-      <p className="text-xs text-gray-500">{titulo}</p>
-      <p className={`text-2xl font-semibold mt-1 ${alerta ? 'text-red-600' : 'text-gray-900'}`}>{valor}</p>
-      {detalle && <p className="text-xs text-gray-500 mt-0.5">{detalle}</p>}
+      <p className="text-xs text-[#8b8b93]">{titulo}</p>
+      <p className={`text-2xl font-semibold mt-1 ${alerta ? 'text-red-400' : 'text-[#f4f4f5]'}`}>{valor}</p>
+      {detalle && <p className="text-xs text-[#8b8b93] mt-0.5">{detalle}</p>}
     </div>
   )
 }
@@ -54,8 +54,8 @@ function Resumen() {
   const [error, setError] = useState(null)
   useEffect(() => { obtenerResumen().then(setR).catch(e => setError(errorDe(e, 'No se pudo cargar el resumen.'))) }, [])
 
-  if (error) return <p className="text-sm text-red-600">{error}</p>
-  if (!r) return <p className="text-sm text-gray-500">Cargando…</p>
+  if (error) return <p className="text-sm text-red-400">{error}</p>
+  if (!r) return <p className="text-sm text-[#8b8b93]">Cargando…</p>
 
   const total = m => Object.values(r.metricas[m] ?? {}).reduce((a, b) => a + b, 0)
   const info = r.informacion
@@ -74,32 +74,32 @@ function Resumen() {
       </div>
 
       <div className={tarjeta}>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Últimos 14 días</h3>
+        <h3 className="text-sm font-semibold text-[#f4f4f5] mb-3">Últimos 14 días</h3>
         <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
           {METRICAS.map(([clave, nombre]) => (
-            <div key={clave} className="flex justify-between border-b border-gray-100 py-1">
-              <dt className="text-gray-600">{nombre}</dt>
-              <dd className="font-medium text-gray-900">{total(clave)}</dd>
+            <div key={clave} className="flex justify-between border-b border-[#1e1e22] py-1">
+              <dt className="text-[#a1a1aa]">{nombre}</dt>
+              <dd className="font-medium text-[#f4f4f5]">{total(clave)}</dd>
             </div>
           ))}
         </dl>
       </div>
 
       <div className={tarjeta}>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Estado de la ingesta</h3>
-        <ul className="divide-y divide-gray-100 text-sm">
+        <h3 className="text-sm font-semibold text-[#f4f4f5] mb-3">Estado de la ingesta</h3>
+        <ul className="divide-y divide-[#1e1e22] text-sm">
           {r.ingesta.ultimas_corridas.map(c => (
             <li key={c.fuente} className="py-2 flex justify-between gap-3">
-              <span className="text-gray-900">{c.fuente}</span>
-              <span className="text-xs text-gray-500">
+              <span className="text-[#f4f4f5]">{c.fuente}</span>
+              <span className="text-xs text-[#8b8b93]">
                 {fechaHora(c.inicio)} · {c.nuevos} nuevos ·{' '}
-                <span className={c.estado === 'ERROR' ? 'text-red-600 font-medium' : 'text-emerald-700'}>{c.estado}</span>
+                <span className={c.estado === 'ERROR' ? 'text-red-400 font-medium' : 'text-emerald-400'}>{c.estado}</span>
               </span>
             </li>
           ))}
         </ul>
         {r.ingesta.errores_ultimos_7_dias.length > 0 && (
-          <div className="mt-3 text-xs text-red-700 space-y-1">
+          <div className="mt-3 text-xs text-red-400 space-y-1">
             {r.ingesta.errores_ultimos_7_dias.map((e, i) => (
               <p key={i}>{e.fuente} ({fechaHora(e.inicio)}): {e.detalle.map(d => d.error).join(' · ')}</p>
             ))}
@@ -147,8 +147,8 @@ function CargaManual({ fuentes, onCargada }) {
   return (
     <form onSubmit={enviar} className={`${tarjeta} space-y-3`}>
       <div>
-        <h3 className="text-sm font-semibold text-gray-900">Cargar publicación de Instagram o WhatsApp</h3>
-        <p className="text-xs text-gray-500 mt-0.5">
+        <h3 className="text-sm font-semibold text-[#f4f4f5]">Cargar publicación de Instagram o WhatsApp</h3>
+        <p className="text-xs text-[#8b8b93] mt-0.5">
           Copiá el texto del posteo y su link. Queda con el estado que corresponde a la confiabilidad de la fuente.
         </p>
       </div>
@@ -160,13 +160,13 @@ function CargaManual({ fuentes, onCargada }) {
       <input required minLength={3} placeholder="Título" value={form.titulo} onChange={cambiar('titulo')} className={campo} />
       <textarea required minLength={10} rows={6} placeholder="Texto del posteo" value={form.contenido}
                 onChange={cambiar('contenido')} className={campo} />
-      <label className="block text-xs text-gray-600">
+      <label className="block text-xs text-[#a1a1aa]">
         Fecha de publicación
         <input required type="date" value={form.fecha_publicacion} onChange={cambiar('fecha_publicacion')} className={`${campo} mt-1`} />
       </label>
       <div className="flex items-center gap-3">
         <button type="submit" disabled={enviando} className={boton}>{enviando ? 'Cargando…' : 'Cargar'}</button>
-        {mensaje && <span className={`text-xs ${mensaje.ok ? 'text-emerald-700' : 'text-red-600'}`}>{mensaje.texto}</span>}
+        {mensaje && <span className={`text-xs ${mensaje.ok ? 'text-emerald-400' : 'text-red-400'}`}>{mensaje.texto}</span>}
       </div>
     </form>
   )
@@ -186,10 +186,10 @@ function FilaFuente({ fuente, esAdmin, onCambio }) {
     <li className="py-3 text-sm">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <a href={fuente.url} target="_blank" rel="noopener noreferrer" className="font-medium text-gray-900 hover:underline">
+          <a href={fuente.url} target="_blank" rel="noopener noreferrer" className="font-medium text-[#f4f4f5] hover:underline">
             {fuente.nombre}
           </a>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-[#8b8b93]">
             {fuente.carga_manual ? 'Carga manual' : `Automática · última revisión: ${fechaHora(fuente.ultima_revision)}`}
           </p>
         </div>
@@ -199,23 +199,23 @@ function FilaFuente({ fuente, esAdmin, onCambio }) {
               <input type="number" min={0} max={100} value={confiabilidad}
                      onChange={e => setConfiabilidad(Number(e.target.value))}
                      onBlur={() => confiabilidad !== fuente.confiabilidad_base && guardar({ confiabilidad_base: confiabilidad })}
-                     className="w-16 border border-gray-300 rounded px-2 py-1" title="Confiabilidad base (%)" />
+                     className="w-16 bg-[#141417] border border-[#232327] text-[#f4f4f5] rounded-lg px-2 py-1" title="Confiabilidad base (%)" />
               <button onClick={() => guardar({ activa: !fuente.activa })}
-                      className={`px-2 py-1 rounded-full ${fuente.activa ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                      className={`px-2 py-1 rounded-full ${fuente.activa ? 'bg-emerald-500/15 text-emerald-400' : 'bg-[#1e1e22] text-[#8b8b93]'}`}>
                 {fuente.activa ? 'Activa' : 'Inactiva'}
               </button>
             </>
           ) : (
             <>
-              <span className="text-gray-500">{fuente.confiabilidad_base}%</span>
-              <span className={`px-2 py-0.5 rounded-full ${fuente.activa ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+              <span className="text-[#8b8b93]">{fuente.confiabilidad_base}%</span>
+              <span className={`px-2 py-0.5 rounded-full ${fuente.activa ? 'bg-emerald-500/15 text-emerald-400' : 'bg-[#1e1e22] text-[#8b8b93]'}`}>
                 {fuente.activa ? 'Activa' : 'Inactiva'}
               </span>
             </>
           )}
         </div>
       </div>
-      {error && <p className="text-xs text-red-600 mt-1">{error}</p>}
+      {error && <p className="text-xs text-red-400 mt-1">{error}</p>}
     </li>
   )
 }
@@ -228,12 +228,12 @@ function Fuentes({ esAdmin }) {
 
   return (
     <div className="space-y-6">
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-400">{error}</p>}
       <CargaManual fuentes={fuentes} onCargada={cargar} />
       <div className={tarjeta}>
-        <h3 className="text-sm font-semibold text-gray-900 mb-1">Fuentes</h3>
-        {esAdmin && <p className="text-xs text-gray-500">Cambiá la confiabilidad (0-100) o activá/desactivá con un clic.</p>}
-        <ul className="divide-y divide-gray-100">
+        <h3 className="text-sm font-semibold text-[#f4f4f5] mb-1">Fuentes</h3>
+        {esAdmin && <p className="text-xs text-[#8b8b93]">Cambiá la confiabilidad (0-100) o activá/desactivá con un clic.</p>}
+        <ul className="divide-y divide-[#1e1e22]">
           {fuentes.map(f => (
             <FilaFuente key={f.id} fuente={f} esAdmin={esAdmin}
                         onCambio={nueva => setFuentes(prev => prev.map(x => (x.id === nueva.id ? nueva : x)))} />
@@ -266,16 +266,16 @@ function FilaUsuario({ u, yo, onCambio }) {
     <li className="py-3 text-sm space-y-2">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-medium text-gray-900 truncate">{u.nombre}{u.id === yo && ' (vos)'}</p>
-          <p className="text-xs text-gray-500 truncate">{u.email}</p>
+          <p className="font-medium text-[#f4f4f5] truncate">{u.nombre}{u.id === yo && ' (vos)'}</p>
+          <p className="text-xs text-[#8b8b93] truncate">{u.email}</p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <select value={u.rol} disabled={u.id === yo} onChange={e => guardar({ rol: e.target.value })}
-                  className="border border-gray-300 rounded px-2 py-1 text-xs">
+                  className="bg-[#141417] border border-[#232327] text-[#f4f4f5] rounded-lg px-2 py-1 text-xs">
             <option>MIEMBRO</option><option>MOD</option><option>ADMIN</option>
           </select>
           <button disabled={u.id === yo} onClick={() => guardar({ activo: !u.activo })}
-                  className={`px-2 py-1 rounded-full text-xs ${u.activo ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                  className={`px-2 py-1 rounded-full text-xs ${u.activo ? 'bg-emerald-500/15 text-emerald-400' : 'bg-[#1e1e22] text-[#8b8b93]'}`}>
             {u.activo ? 'Activo' : 'Inactivo'}
           </button>
         </div>
@@ -285,11 +285,11 @@ function FilaUsuario({ u, yo, onCambio }) {
                onChange={e => setPassword(e.target.value)} className={`${campo} !py-1 text-xs`} />
         <button disabled={password.length < 8}
                 onClick={() => guardar({ password }, 'Contraseña actualizada').then(() => setPassword(''))}
-                className="text-xs text-primary-600 hover:underline disabled:text-gray-400 whitespace-nowrap">
+                className="text-xs text-[#f2894f] hover:underline disabled:text-[#4b4b53] disabled:no-underline whitespace-nowrap">
           Resetear
         </button>
       </div>
-      {mensaje && <p className={`text-xs ${mensaje.ok ? 'text-emerald-700' : 'text-red-600'}`}>{mensaje.texto}</p>}
+      {mensaje && <p className={`text-xs ${mensaje.ok ? 'text-emerald-400' : 'text-red-400'}`}>{mensaje.texto}</p>}
     </li>
   )
 }
@@ -318,11 +318,11 @@ function Usuarios({ yo }) {
     <div className="space-y-6">
       <form onSubmit={crear} className={`${tarjeta} space-y-3`}>
         <div>
-          <h3 className="text-sm font-semibold text-gray-900">Crear cuenta</h3>
-          <p className="text-xs text-gray-500 mt-0.5">Solo correos institucionales. Pasale la contraseña a la persona por un medio seguro.</p>
+          <h3 className="text-sm font-semibold text-[#f4f4f5]">Crear cuenta</h3>
+          <p className="text-xs text-[#8b8b93] mt-0.5">Solo correos institucionales. Pasale la contraseña a la persona por un medio seguro.</p>
         </div>
         <input required minLength={2} placeholder="Nombre" value={form.nombre} onChange={cambiar('nombre')} className={campo} />
-        <input required type="email" placeholder="usuario@alu.frt.utn.edu.ar" value={form.email} onChange={cambiar('email')} className={campo} />
+        <input required type="email" placeholder="usuario@alu.frt.utn.edu.ar o @doc.frt.utn.edu.ar" value={form.email} onChange={cambiar('email')} className={campo} />
         <div className="flex gap-2">
           <select value={form.rol} onChange={cambiar('rol')} className={campo}>
             <option>MIEMBRO</option><option>MOD</option><option>ADMIN</option>
@@ -332,13 +332,13 @@ function Usuarios({ yo }) {
         </div>
         <div className="flex items-center gap-3">
           <button type="submit" className={boton}>Crear</button>
-          {mensaje && <span className={`text-xs ${mensaje.ok ? 'text-emerald-700' : 'text-red-600'}`}>{mensaje.texto}</span>}
+          {mensaje && <span className={`text-xs ${mensaje.ok ? 'text-emerald-400' : 'text-red-400'}`}>{mensaje.texto}</span>}
         </div>
       </form>
 
       <div className={tarjeta}>
-        <h3 className="text-sm font-semibold text-gray-900 mb-1">Usuarios ({usuarios.length})</h3>
-        <ul className="divide-y divide-gray-100">
+        <h3 className="text-sm font-semibold text-[#f4f4f5] mb-1">Usuarios ({usuarios.length})</h3>
+        <ul className="divide-y divide-[#1e1e22]">
           {usuarios.map(u => (
             <FilaUsuario key={u.id} u={u} yo={yo}
                          onCambio={nuevo => setUsuarios(prev => prev.map(x => (x.id === nuevo.id ? nuevo : x)))} />
@@ -361,14 +361,14 @@ export default function Panel({ usuario }) {
   const [tab, setTab] = useState('resumen')
 
   return (
-    <div className="flex flex-col h-full bg-gray-50">
-      <div className="bg-white border-b border-gray-200 px-6 pt-4">
-        <h2 className="text-base font-semibold text-gray-900">Panel de administración</h2>
+    <div className="flex flex-col h-full bg-[#0a0a0c] text-[#f4f4f5] font-body [color-scheme:dark]">
+      <div className="bg-[#0d0d10] border-b border-[#1e1e22] px-6 pt-4">
+        <h2 className="font-display text-base font-semibold text-[#f4f4f5]">Panel de administración</h2>
         <div className="flex gap-1 mt-2 overflow-x-auto">
           {tabs.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
                     className={`px-4 py-2 text-sm font-medium border-b-2 whitespace-nowrap ${
-                      tab === t.id ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+                      tab === t.id ? 'border-[#e8592e] text-[#f2894f]' : 'border-transparent text-[#8b8b93] hover:text-[#f4f4f5]'}`}>
               {t.label}
             </button>
           ))}

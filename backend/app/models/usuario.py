@@ -1,7 +1,7 @@
 """
 Modelo Usuario — representa a cualquier persona del sistema.
-Las cuentas solo las crea un ADMIN (panel) o la consola (create_admin.py);
-no hay registro público. Roles: ver RolEnum y docs/ANALISIS_MVP.md §11.
+Las cuentas se crean por registro público con código enviado al mail
+institucional (siempre como MIEMBRO), o las crea un ADMIN (panel) o la consola. Roles: ver RolEnum y docs/ANALISIS_MVP.md §11.
 """
 import enum
 from datetime import datetime

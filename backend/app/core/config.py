@@ -61,7 +61,15 @@ class Settings(BaseSettings):
 
     # ── Usuarios ──────────────────────────────────────────────────────────────
     # Solo se pueden crear cuentas (y loguearse) con estos dominios de correo
-    DOMINIOS_PERMITIDOS: List[str] = ["alu.frt.utn.edu.ar"]
+    DOMINIOS_PERMITIDOS: List[str] = ["alu.frt.utn.edu.ar", "doc.frt.utn.edu.ar"]
+
+    # ── Mail (códigos de registro y recuperación de contraseña) ───────────────
+    # Gmail: smtp.gmail.com, puerto 465 y una "contraseña de aplicación" de 16 letras
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 465
+    SMTP_USUARIO: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_REMITENTE: str = ""  # ej. "UTNIA <utnia.frt@gmail.com>"; vacío = SMTP_USUARIO
 
     # ── WhatsApp (Cloud API oficial): reenvíos de posteos de canales al número del bot ──
     WHATSAPP_VERIFY_TOKEN: str = ""   # palabra secreta elegida al conectar el webhook en Meta

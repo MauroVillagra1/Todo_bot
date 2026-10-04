@@ -30,6 +30,28 @@ export async function login(email, password) {
   return data  // { access_token, token_type, usuario }
 }
 
+/** Paso 1 del registro: manda un código de 6 dígitos al mail institucional. */
+export async function solicitarRegistro(nombre, email, password) {
+  const { data } = await api.post('/api/v1/auth/registro', { nombre, email, password })
+  return data  // { mensaje }
+}
+
+/** Paso 2: con el código correcto se crea la cuenta y queda logueado. */
+export async function verificarRegistro(email, codigo) {
+  const { data } = await api.post('/api/v1/auth/registro/verificar', { email, codigo })
+  return data  // { access_token, token_type, usuario }
+}
+
+export async function solicitarRecuperacion(email) {
+  const { data } = await api.post('/api/v1/auth/recuperar', { email })
+  return data  // { mensaje }
+}
+
+export async function confirmarRecuperacion(email, codigo, password) {
+  const { data } = await api.post('/api/v1/auth/recuperar/confirmar', { email, codigo, password })
+  return data  // { mensaje }
+}
+
 // ── Chat ──────────────────────────────────────────────────────────────────────
 
 export async function enviarMensaje(mensaje, conversacion_id = null) {

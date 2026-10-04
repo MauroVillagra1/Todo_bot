@@ -10,6 +10,7 @@ from app.models.metrica import MetricaDiaria
 from app.models.informacion import Evidencia, Historial, Informacion, Verificacion
 from app.models.cache import CacheRespuesta
 from app.models.horario import HorarioClase
+from app.models.codigo import CodigoVerificacion
 
 __all__ = [
     "Usuario",

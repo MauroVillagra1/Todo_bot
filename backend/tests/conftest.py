@@ -9,7 +9,7 @@ import sys
 os.environ["DATABASE_URL"] = "sqlite://"
 os.environ["SECRET_KEY"] = "test-secret"
 os.environ["ENVIRONMENT"] = "test"
-os.environ["DOMINIOS_PERMITIDOS"] = '["alu.frt.utn.edu.ar"]'
+os.environ["DOMINIOS_PERMITIDOS"] = '["alu.frt.utn.edu.ar", "doc.frt.utn.edu.ar"]'
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
