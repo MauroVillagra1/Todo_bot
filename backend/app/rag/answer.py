@@ -9,6 +9,7 @@ el modelo solo cita números [n]. Un número que no existe se descarta, así
 nunca se muestra una fuente o URL inventada.
 """
 import hashlib
+import logging
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -22,6 +23,8 @@ from app.models.informacion import Informacion
 from app.rag.search import Resultado, buscar
 from app.services import llm
 from app.services.metricas import incrementar
+
+logger = logging.getLogger(__name__)
 
 MAX_CONTEXTO = 6000  # caracteres (~1500 tokens)
 MAX_TOKENS_RESPUESTA = 500
@@ -149,8 +152,9 @@ def responder(db: Session, pregunta: str, historial: list[dict]) -> dict:
         incrementar(db, "llamadas_llm")
         try:
             salida = armar_respuesta(llm.completar(mensajes, max_tokens=MAX_TOKENS_RESPUESTA), resultados)
-        except Exception:
+        except Exception as e:
             # Sin cupo o sin servicio de IA: igual se muestran las evidencias (no se cachea)
+            logger.warning("LLM no disponible: %s", str(e)[:300])
             incrementar(db, "errores_llm")
             return {
                 "respuesta": SIN_LLM,

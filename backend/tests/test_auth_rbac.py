@@ -62,6 +62,7 @@ ENDPOINTS_ADMIN = [
     ("get", "/api/v1/usuarios/1", None),
     ("post", "/api/v1/usuarios/", {**NUEVO, "email": "x@alu.frt.utn.edu.ar"}),
     ("patch", "/api/v1/usuarios/1", {"rol": "ADMIN"}),
+    ("get", "/api/v1/admin/diagnostico", None),
 ]
 
 

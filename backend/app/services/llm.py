@@ -28,7 +28,7 @@ def completar(mensajes: list[dict], max_tokens: int = 500) -> str:
         "Content-Type": "application/json",
     }
 
-    ultimo_error = None
+    errores = []
     for modelo in modelos:
         try:
             payload = {
@@ -40,12 +40,14 @@ def completar(mensajes: list[dict], max_tokens: int = 500) -> str:
             # Timeout corto: si hay que probar varios modelos no se pasa del límite de Vercel
             with httpx.Client(timeout=20) as client:
                 resp = client.post(_URL_OPENROUTER, json=payload, headers=headers)
-                resp.raise_for_status()
-                data = resp.json()
+            if resp.status_code != 200:
+                # El cuerpo dice por qué (key inválida, modelo inexistente, límite…)
+                raise ValueError(f"HTTP {resp.status_code}: {resp.text[:200]}")
+            data = resp.json()
             if not data.get("choices"):
-                raise ValueError(f"Sin respuesta del modelo {modelo}")
+                raise ValueError(f"sin respuesta: {str(data)[:200]}")
             return data["choices"][0]["message"]["content"].strip()
         except Exception as e:
-            ultimo_error = e
+            errores.append(f"{modelo} → {e}")
 
-    raise ValueError(f"Todos los modelos fallaron. Último error: {ultimo_error}")
+    raise ValueError("Todos los modelos fallaron: " + " | ".join(errores))
