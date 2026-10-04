@@ -1,11 +1,7 @@
 """
 Modelo Usuario — representa a cualquier persona del sistema.
-Roles:
-  - administrador       → acceso completo, gestión de cuentas
-  - administrativo      → carga eventos de calendario generales
-  - jefe_departamento   → gestiona materias/comisiones de su carrera, hace anuncios
-  - profesor            → legacy (se migra en la etapa 1 a MIEMBRO/MOD/ADMIN)
-  - alumno              → solo lectura de su comisión
+Las cuentas solo las crea un ADMIN (panel) o la consola (create_admin.py);
+no hay registro público. Roles: ver RolEnum y docs/ANALISIS_MVP.md §11.
 """
 import enum
 from datetime import datetime
@@ -17,13 +13,9 @@ from app.core.database import Base
 
 
 class RolEnum(str, enum.Enum):
-    administrador     = "administrador"
-    administrativo    = "administrativo"
-    jefe_departamento = "jefe_departamento"
-    profesor          = "profesor"
-    alumno            = "alumno"
-    # alias legacy — se mantiene para no romper datos existentes en la DB
-    profesor_directivo = "profesor_directivo"
+    MIEMBRO = "MIEMBRO"  # consulta el chat y la información disponible
+    MOD     = "MOD"      # + revisa información, contradicciones y fuentes
+    ADMIN   = "ADMIN"    # + administra fuentes, configuración y usuarios
 
 
 class Usuario(Base):
@@ -45,15 +37,6 @@ class Usuario(Base):
         onupdate=func.now(),
         nullable=False,
     )
-
-    @property
-    def es_profesor(self) -> bool:
-        return self.rol in (RolEnum.profesor, RolEnum.profesor_directivo)
-
-    @property
-    def es_staff(self) -> bool:
-        """Puede cargar datos (no alumno)."""
-        return self.rol != RolEnum.alumno
 
     def __repr__(self) -> str:
         return f"<Usuario id={self.id} email={self.email} rol={self.rol}>"

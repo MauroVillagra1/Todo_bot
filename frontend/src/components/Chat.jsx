@@ -9,18 +9,9 @@ import MensajeBurbuja from './MensajeBurbuja'
 import Panel from './Panel'
 
 const ROLES_DISPLAY = {
-  root:           { label: 'Root',              color: 'bg-red-500/15 text-red-400' },
-  master:         { label: 'Master',            color: 'bg-[#e8592e]/15 text-[#f2894f]' },
-  administrativo: { label: 'Administrativo',    color: 'bg-sky-500/15 text-sky-400' },
-  jefe_area:      { label: 'Jefe de Área',      color: 'bg-emerald-500/15 text-emerald-400' },
-  docente:        { label: 'Docente',           color: 'bg-violet-500/15 text-violet-400' },
-  estudiante:     { label: 'Estudiante',        color: 'bg-gray-500/15 text-gray-400' },
-  // aliases legacy
-  administrador:     { label: 'Master',         color: 'bg-[#e8592e]/15 text-[#f2894f]' },
-  jefe_departamento: { label: 'Jefe de Área',   color: 'bg-emerald-500/15 text-emerald-400' },
-  profesor_directivo:{ label: 'Docente',        color: 'bg-violet-500/15 text-violet-400' },
-  profesor:          { label: 'Docente',        color: 'bg-violet-500/15 text-violet-400' },
-  alumno:            { label: 'Estudiante',     color: 'bg-gray-500/15 text-gray-400' },
+  ADMIN:   { label: 'Admin',     color: 'bg-[#e8592e]/15 text-[#f2894f]' },
+  MOD:     { label: 'Moderador', color: 'bg-sky-500/15 text-sky-400' },
+  MIEMBRO: { label: 'Miembro',   color: 'bg-gray-500/15 text-gray-400' },
 }
 
 const PREGUNTAS_EJEMPLO = [
@@ -29,8 +20,8 @@ const PREGUNTAS_EJEMPLO = [
   '¿Cuándo abren las inscripciones?',
 ]
 
-// Hasta la migración de roles (etapa 1) solo el administrador tiene panel
-const TIENE_PANEL = ['administrador']
+// La UI solo oculta el acceso: los permisos reales se validan en el backend
+const TIENE_PANEL = ['MOD', 'ADMIN']
 
 function ahora() {
   return new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
@@ -52,7 +43,7 @@ function LogoUTNIA({ size = 36 }) {
   )
 }
 
-export default function Chat({ usuario = { nombre: 'Invitado', rol: 'alumno' }, onLogout = () => {} }) {
+export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' }, onLogout = () => {} }) {
   const [mensajes, setMensajes]             = useState([])
   const [input, setInput]                   = useState('')
   const [escribiendo, setEscribiendo]       = useState(false)

@@ -46,7 +46,11 @@ class Settings(BaseSettings):
     # ── CORS ──────────────────────────────────────────────────────────────────
     CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
 
-    @field_validator("CORS_ORIGINS", mode="before")
+    # ── Usuarios ──────────────────────────────────────────────────────────────
+    # Solo se pueden crear cuentas (y loguearse) con estos dominios de correo
+    DOMINIOS_PERMITIDOS: List[str] = ["alu.frt.utn.edu.ar"]
+
+    @field_validator("CORS_ORIGINS", "DOMINIOS_PERMITIDOS", mode="before")
     @classmethod
     def parse_cors_origins(cls, v):
         """Acepta lista JSON ["url1","url2"] o string separado por comas desde el .env."""

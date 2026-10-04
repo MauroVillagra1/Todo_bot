@@ -72,23 +72,13 @@ INFO  [alembic.runtime.migration] Running upgrade -> xxxx, initial
 
 ---
 
-## 6. Cargar datos de prueba
+## 6. Crear el usuario ADMIN
 
 ```bash
-cd "/home/kali/Escritorio/Proyecto BOT/backend"
-python seed.py
+cd backend
+python create_admin.py
 ```
-
-Salida esperada:
-```
-── Usuarios ──────────────────────────
-  ✓ creado: administrador — admin@universidad.edu / Admin1234
-  ✓ creado: profesor_directivo — garcia@universidad.edu / Profe1234
-  ✓ creado: alumno — ana@universidad.edu / Alumno1234
-  ✓ creado: alumno — carlos@universidad.edu / Alumno1234
-...
-✅ Seed completado exitosamente.
-```
+Pide la contraseña por consola. Ver la sección "Usuarios" al final.
 
 ---
 
@@ -118,8 +108,8 @@ Debería devolver `{"status": "ok"}`
 - Body:
 ```json
 {
-  "email": "admin@universidad.edu",
-  "password": "Admin1234"
+  "email": "mauro.villagra1@alu.frt.utn.edu.ar",
+  "password": "<tu contraseña>"
 }
 ```
 - Copiá el `access_token` de la respuesta
@@ -149,7 +139,7 @@ Debería devolver `{"status": "ok"}`
 # Login
 TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@universidad.edu","password":"Admin1234"}' \
+  -d '{"email":"mauro.villagra1@alu.frt.utn.edu.ar","password":"<tu contraseña>"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
 echo "Token obtenido: ${TOKEN:0:20}..."
@@ -162,11 +152,25 @@ curl -s -X POST http://localhost:8000/api/v1/chat/ \
 
 ---
 
-## Usuarios disponibles en el seed
+## Usuarios
 
-| Email | Contraseña | Rol |
-|---|---|---|
-| admin@universidad.edu | Admin1234 | administrador |
-| garcia@universidad.edu | Profe1234 | profesor_directivo |
-| ana@universidad.edu | Alumno1234 | alumno (Comisión 2K1) |
-| carlos@universidad.edu | Alumno1234 | alumno (Comisión 3N2) |
+No hay registro público ni seeds con contraseñas. Las cuentas se crean así:
+
+- **ADMIN desde la consola** (pide la contraseña sin mostrarla):
+  ```bash
+  cd backend
+  python create_admin.py                          # mauro.villagra1@alu.frt.utn.edu.ar
+  python create_admin.py otro@alu.frt.utn.edu.ar
+  ```
+- **Cualquier rol desde la API** (solo ADMIN): `POST /api/v1/usuarios/` y `PATCH /api/v1/usuarios/{id}` para cambiar rol, activar/desactivar o resetear contraseña.
+
+Solo se aceptan emails de `DOMINIOS_PERMITIDOS` (por defecto `@alu.frt.utn.edu.ar`). Roles: `MIEMBRO`, `MOD`, `ADMIN`.
+
+## Tests
+
+```bash
+cd backend
+pip install -r requirements-dev.txt
+python -m pytest tests -q
+```
+Usan SQLite en memoria: no tocan la base real.

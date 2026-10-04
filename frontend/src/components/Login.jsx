@@ -82,7 +82,7 @@ export default function Login({ onLogin }) {
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="tu@frt.utn.edu.ar"
+                placeholder="tu@alu.frt.utn.edu.ar"
                 required
                 autoFocus
                 className="w-full bg-[#141417] border border-[#232327] rounded-xl px-4 py-2.5

@@ -1,6 +1,7 @@
 """
 Router de usuarios (gestión de cuentas).
-Solo el administrador puede crear, listar y modificar usuarios.
+Solo ADMIN puede crear, listar y modificar usuarios. No hay registro público:
+el email debe ser institucional (DOMINIOS_PERMITIDOS) y lo valida el schema.
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -8,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.dependencies import require_admin
 from app.core.security import hash_password
-from app.models.usuario import Usuario
+from app.models.usuario import RolEnum, Usuario
 from app.schemas.common import MessageResponse, PaginatedResponse
 from app.schemas.usuario import UsuarioCreate, UsuarioRead, UsuarioUpdate
 
@@ -71,14 +72,32 @@ def actualizar_usuario(
     usuario_id: int,
     data: UsuarioUpdate,
     db: Session = Depends(get_db),
-    _admin=Depends(require_admin),
+    admin: Usuario = Depends(require_admin),
 ):
-    """Actualiza campos de un usuario. Solo administradores."""
+    """Actualiza campos de un usuario (incluido el rol). Solo administradores."""
     usuario = db.get(Usuario, usuario_id)
     if not usuario:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
 
     update_data = data.model_dump(exclude_unset=True)
+
+    # Evita que un ADMIN se deje sin acceso a sí mismo por error
+    if usuario.id == admin.id and (
+        update_data.get("activo") is False
+        or update_data.get("rol", RolEnum.ADMIN) != RolEnum.ADMIN
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No podés desactivarte ni quitarte el rol ADMIN a vos mismo",
+        )
+
+    if "email" in update_data and update_data["email"] != usuario.email:
+        if db.query(Usuario).filter(Usuario.email == update_data["email"]).first():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Ya existe un usuario con ese email",
+            )
+
     if "password" in update_data:
         update_data["password_hash"] = hash_password(update_data.pop("password"))
 

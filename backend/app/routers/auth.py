@@ -11,7 +11,7 @@ from app.core.dependencies import get_current_user
 from app.core.security import create_access_token, verify_password
 from app.models.usuario import Usuario
 from app.schemas.auth import LoginRequest, TokenResponse
-from app.schemas.usuario import UsuarioRead
+from app.schemas.usuario import UsuarioRead, es_email_institucional
 
 router = APIRouter(prefix="/auth", tags=["Autenticación"])
 
@@ -28,7 +28,12 @@ def login(credentials: LoginRequest, db: Session = Depends(get_db)):
         .first()
     )
 
-    if not user or not verify_password(credentials.password, user.password_hash):
+    # Mismo error para dominio no institucional: no revela qué cuentas existen
+    if (
+        not user
+        or not es_email_institucional(user.email)
+        or not verify_password(credentials.password, user.password_hash)
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Email o contraseña incorrectos",

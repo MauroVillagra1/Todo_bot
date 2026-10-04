@@ -11,13 +11,6 @@ from app.core.security import decode_access_token
 
 http_bearer = HTTPBearer()
 
-# Grupos de roles
-_ROLES_STAFF      = {"administrador", "administrativo", "jefe_departamento", "profesor", "profesor_directivo"}
-_ROLES_PROFESORES = {"profesor", "profesor_directivo"}
-_ROLES_ADMIN_ALL  = {"administrador"}
-_ROLES_ADMIN_ACAD = {"administrador", "jefe_departamento"}
-_ROLES_CALENDARIO = {"administrador", "administrativo"}
-
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(http_bearer),
@@ -61,23 +54,11 @@ def require_rol(*roles: str):
 
 # ── Dependencias pre-construidas ──────────────────────────────────────────────
 
-# Cualquier usuario autenticado
-require_authenticated = get_current_user
+# MIEMBRO: cualquier usuario autenticado y activo
+require_miembro = get_current_user
 
-# Solo administrador del sistema
-require_admin = require_rol("administrador")
+# MOD: revisión de información, contradicciones, fuentes y estados
+require_mod = require_rol("MOD", "ADMIN")
 
-# Administrador + administrativo (gestión calendario)
-require_calendario = require_rol("administrador", "administrativo")
-
-# Administrador + jefe de departamento (gestión académica)
-require_acad_admin = require_rol("administrador", "jefe_departamento")
-
-# Todo el staff (no alumno)
-require_staff = require_rol(
-    "administrador", "administrativo", "jefe_departamento",
-    "profesor", "profesor_directivo",
-)
-
-# Solo profesores (y alias legacy)
-require_profesor = require_rol("profesor", "profesor_directivo")
+# ADMIN: fuentes, configuración, usuarios y administración del sistema
+require_admin = require_rol("ADMIN")
