@@ -171,6 +171,9 @@ def _responder_sin_cache(db: Session, pregunta: str, historial: list[dict], ante
 
     # Para preguntas de seguimiento se busca también con la pregunta anterior
     resultados = buscar(db, f"{anterior} {pregunta}".strip())
+    if not resultados and anterior:
+        # Cambio de tema: las palabras de la pregunta anterior no dejaban cumplir la cobertura
+        resultados = buscar(db, pregunta)
     if not resultados:
         incrementar(db, "consultas_sin_evidencia")
         return {"respuesta": SIN_EVIDENCIA, "estado": "NO_CONFIRMADA", "fuentes": [], "fecha_informacion": None}
