@@ -153,6 +153,17 @@ def responder_horario(db: Session, pregunta: str, anterior: str = "") -> dict | 
             mas_reciente[clave] = d
     filas = [(h, d) for h, d in filas if mas_reciente[(h.plan, h.comision, h.periodo)].id == d.id]
 
+    # Si una comisión figura en dos planes (2008 y 2023), se muestra el más nuevo,
+    # salvo que se pida un plan. Si la materia solo existe en el plan viejo, queda.
+    planes_omitidos = set()
+    if not f["plan"]:
+        plan_nuevo: dict[tuple, str] = {}
+        for h, _ in filas:
+            clave = (h.comision, h.periodo)
+            plan_nuevo[clave] = max(plan_nuevo.get(clave, ""), h.plan or "")
+        planes_omitidos = {h.plan for h, _ in filas if (h.plan or "") != plan_nuevo[(h.comision, h.periodo)]}
+        filas = [(h, d) for h, d in filas if (h.plan or "") == plan_nuevo[(h.comision, h.periodo)]]
+
     # Agrupar por comisión (y plan/período), ordenado por día y hora
     grupos: dict[tuple, list[HorarioClase]] = defaultdict(list)
     for h, _ in filas:
@@ -162,10 +173,20 @@ def responder_horario(db: Session, pregunta: str, anterior: str = "") -> dict | 
     numero = {d.id: i for i, d in enumerate(docs, 1)}
     doc_de = {h.id: d for h, d in filas}
 
+    # Una materia puede venir escrita distinto ("Analisis Matematico I" / "Análisis Matemático I"):
+    # se agrupa por su forma normalizada y se muestra la grafía más común (con tildes si empata)
+    grafias: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    for h, _ in filas:
+        grafias[h.materia_norm][h.materia] += 1
+    nombre_de = {
+        norma: max(cuenta, key=lambda g: (cuenta[g], sum(not c.isascii() for c in g)))
+        for norma, cuenta in grafias.items()
+    }
+    varias_materias = len(nombre_de) > 1 or f["electivas"]
+
     titulo = "Horarios"
     if materias:
-        nombres = sorted({h.materia for h, _ in filas})
-        titulo += " de " + " / ".join(f"**{n}**" for n in nombres[:3])
+        titulo += " de " + " / ".join(f"**{n}**" for n in sorted(nombre_de.values())[:3])
     if f["dias"]:
         titulo += " (" + ", ".join(NOMBRE_DIA[d] for d in sorted(f["dias"])) + ")"
     lineas = [f"{titulo}, según los horarios publicados por el Departamento de Sistemas:", ""]
@@ -178,12 +199,15 @@ def responder_horario(db: Session, pregunta: str, anterior: str = "") -> dict | 
         for b in sorted(bloques, key=lambda b: (b.dia, b.inicio)):
             extra = "".join(x for x in (f" (electiva)" if b.electiva else "",
                                         f" — {b.docente}" if b.docente else "", f" — {b.lugar}" if b.lugar else ""))
-            materia = "" if len(materias) == 1 and not f["electivas"] else f" {b.materia}"
+            materia = f" {nombre_de[b.materia_norm]}" if varias_materias else ""
             lineas.append(f"- {NOMBRE_DIA[b.dia]} {b.inicio} a {b.fin}:{materia}{extra}".replace(": —", ":").rstrip(":"))
         lineas.append("")
         if len(lineas) > MAX_LINEAS:
             lineas.append("_(Hay más resultados: indicá una comisión o un día para acotar.)_")
             break
+    if planes_omitidos:
+        viejos = ", ".join(sorted(p for p in planes_omitidos if p))
+        lineas.append(f"_Se muestra el plan más reciente. Si cursás el plan {viejos}, preguntá indicando “plan {viejos}”._")
 
     fuentes_nombre = dict(db.query(Fuente.id, Fuente.nombre).all())
     estados = dict(

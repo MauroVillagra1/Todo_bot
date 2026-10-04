@@ -52,6 +52,30 @@ def test_bloque_partido_por_una_linea_se_une(grillas):
             " — Docente: De La Cruz José — Lab. 155") in lineas
 
 
+@pytest.fixture(scope="module")
+def segundo_anio():
+    from app.ingest.horarios import leer_grillas
+    return {g.comision: g for g in leer_grillas((PDF.parent / "2-ANO-2023.pdf").read_bytes())}
+
+
+def test_segundo_anio_todas_las_comisiones_completas(segundo_anio):
+    # Encabezados al pie de la página anterior y grillas cortadas por el salto de página
+    assert sorted(segundo_anio) == ["2K01", "2K02", "2K03", "2K04", "2K05", "2K06", "2K07"]
+    assert all(len(g.bloques) == 12 and g.plan == "2023" and g.periodo == "Anual" for g in segundo_anio.values())
+
+
+def test_bloque_cortado_por_salto_de_pagina(segundo_anio):
+    textos = [b.texto() for b in segundo_anio["2K07"].bloques]
+    assert "Martes 17:30 a 19:00: Sistemas Operativos — Docente: Gonzalez Juan P. — Aula 231" in textos
+    assert "Viernes 18:15 a 19:45: Fisica II" in textos
+
+
+def test_fuentes_sin_negrita_ni_cursiva_en_el_nombre(segundo_anio):
+    # Este PDF usa "CIDFont+F2" (materia) y "CIDFont+F4" (docente)
+    textos = [b.texto() for b in segundo_anio["2K03"].bloques]
+    assert "Jueves 08:00 a 09:30: Parad. De Programacion — Docente: Garcia Rosas Edwin — Lab. 155" in textos
+
+
 def test_pdf_que_no_es_horario_usa_la_extraccion_comun():
     pdf = pdf_con_texto("Resolucion 123/2026 sobre mesas de examen")
     assert leer_horarios(pdf) is None

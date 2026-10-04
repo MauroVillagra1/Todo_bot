@@ -127,11 +127,12 @@ def _solapa(a0: float, a1: float, b0: float, b1: float) -> float:
 
 
 def _palabras_en(palabras: list[dict], x0: float, x1: float, top: float, bottom: float) -> list[dict]:
-    dentro = [
-        w for w in palabras
-        if x0 - 1 <= (w["x0"] + w["x1"]) / 2 <= x1 + 1 and top - 1 <= (w["top"] + w["bottom"]) / 2 <= bottom + 1
-    ]
-    return sorted(dentro, key=lambda w: (round(w["top"] / 3), w["x0"]))  # por renglón
+    dentro = {}
+    for w in palabras:
+        if x0 - 1 <= (w["x0"] + w["x1"]) / 2 <= x1 + 1 and top - 1 <= (w["top"] + w["bottom"]) / 2 <= bottom + 1:
+            # Algunos PDFs dibujan el mismo texto dos veces en el mismo lugar
+            dentro.setdefault((w["text"], round(w["x0"] / 2), round(w["top"] / 2)), w)
+    return sorted(dentro.values(), key=lambda w: (round(w["top"] / 3), w["x0"]))  # por renglón
 
 
 def _unir(palabras: list[dict]) -> str:
@@ -152,53 +153,90 @@ def _hay_borde(bordes: list[dict], y: float, x0: float, x1: float) -> bool:
                for b in bordes)
 
 
-def _grilla(pagina, tabla) -> tuple[list[_Fila], list[tuple[int, float, float]]] | None:
-    """Filas (franjas horarias) y columnas (días) de una tabla, o None si no es un horario."""
-    filas: list[_Fila] = []
-    columnas: list[tuple[int, float, float]] = []
+@dataclass
+class _Segmento:
+    filas: list[_Fila]
+    columnas: list[tuple[int, float, float]]
+    tiene_dias: bool  # False = continuación de la grilla de la página anterior
+    top: float = 0.0  # posición de la fila de días (el encabezado de la comisión está arriba)
+
+
+def _segmentos(pagina, tabla, columnas_previas=None) -> list[_Segmento]:
+    """
+    Grillas dentro de una tabla: cada fila de días (Lunes…Viernes) abre una nueva.
+    Franjas antes de cualquier fila de días = continuación de la grilla de la
+    página anterior (cortada por el salto de página), con sus mismas columnas.
+    """
+    segmentos: list[_Segmento] = []
+    actual = _Segmento([], columnas_previas or [], False)
     for fila in tabla.rows:
         celdas = fila.cells
         textos = [normalizar(pagina.crop(c).extract_text() or "") if c else "" for c in celdas]
-        if not columnas and sum(t in DIAS for t in textos) >= 3:
-            columnas = [(DIAS[t], c[0], c[2]) for t, c in zip(textos, celdas) if c and t in DIAS]
+        if sum(t in DIAS for t in textos) >= 3:
+            segmentos.append(actual)
+            dias = [(DIAS[t], c[0], c[2]) for t, c in zip(textos, celdas) if c and t in DIAS]
+            actual = _Segmento([], dias, True, fila.bbox[1])
             continue
-        franjas = _RE_FRANJA.findall(textos[0]) if textos else []
-        if columnas and franjas and celdas[0]:
+        etiqueta = textos[0] if textos else ""
+        if actual.columnas:
+            # La hora se lee de la zona a la izquierda de los días: a veces pdfplumber
+            # no incluye la primera columna en una fila (ej. la primera de la página)
+            etiqueta = pagina.crop((0, fila.bbox[1], actual.columnas[0][1], fila.bbox[3])).extract_text() or ""
+        franjas = _RE_FRANJA.findall(etiqueta)
+        if actual.columnas and franjas:
             # A veces pdfplumber junta dos filas en una: se reparte la altura entre las franjas
             alto = (fila.bbox[3] - fila.bbox[1]) / len(franjas)
             for k, (ini, fin) in enumerate(franjas):
                 top = fila.bbox[1] + k * alto
-                filas.append(_Fila(ini.zfill(5), fin.zfill(5), top, top + alto))
-    return (filas, columnas) if filas and len(columnas) >= 3 else None
+                actual.filas.append(_Fila(ini.zfill(5), fin.zfill(5), top, top + alto))
+    segmentos.append(actual)
+    # Una fila de días sin franjas debajo (al pie de la página) también abre grilla:
+    # sus franjas siguen en la página siguiente
+    return [s for s in segmentos if len(s.columnas) >= 3 and (s.filas or s.tiene_dias)]
 
 
-def _es_materia(w: dict) -> bool:
-    nombre = w.get("fontname", "")
-    return "Bold" in nombre and "Italic" not in nombre
+def _fuente(w: dict) -> str:
+    return w.get("fontname", "")
 
 
-def _separar(palabras: list[dict]) -> tuple[str, str]:
-    """(materia, resto): la materia es el tramo inicial en negrita (sin cursiva)."""
+def _fuentes_de_materia(bloques: list[list[dict]]) -> set[str]:
+    """
+    Fuentes usadas para nombres de materia en este PDF. La materia es el primer
+    tramo del bloque con una misma fuente; el docente viene después en otra
+    (negrita/cursiva, o "CIDFont+F2"/"CIDFont+F4" según cómo se exportó el PDF).
+    """
+    primeras: dict[str, int] = {}
+    segundas: dict[str, int] = {}
+    for ws in bloques:
+        primeras[_fuente(ws[0])] = primeras.get(_fuente(ws[0]), 0) + 1
+        otra = next((_fuente(w) for w in ws if _fuente(w) != _fuente(ws[0])), None)
+        if otra:
+            segundas[otra] = segundas.get(otra, 0) + 1
+    return {f for f, n in primeras.items() if n > segundas.get(f, 0)}
+
+
+def _separar(palabras: list[dict], fuentes_materia: set[str]) -> tuple[str, str]:
+    """(materia, resto): la materia es el tramo inicial con la fuente de materias."""
+    if _fuente(palabras[0]) not in fuentes_materia:
+        # Empieza con la fuente de docentes: continuación de un bloque que una línea dejó partido
+        return "", _unir(palabras)
     i = 0
-    while i < len(palabras) and _es_materia(palabras[i]):
+    while i < len(palabras) and _fuente(palabras[i]) == _fuente(palabras[0]):
         i += 1
-    if i == 0:
-        # Empieza en cursiva: es el docente de un bloque que una línea dejó partido
-        if any("Italic" in w.get("fontname", "") for w in palabras):
-            return "", _unir(palabras)
-        return _unir(palabras), ""  # PDF sin negritas: todo como materia
     return _unir(palabras[:i]), _unir(palabras[i:])
 
 
 def _armar_bloque(dia: int, inicio: str, fin: str, materia: str, resto: str) -> Bloque:
-    lugares = [m.group(1) for m in _RE_LUGAR.finditer(f"{materia} {resto}")]
+    lugares = list(dict.fromkeys(  # sin repetidos ("Lab. 155" en la materia y en el docente)
+        re.sub(r"\s+", " ", m.group(1)).replace("Lab.", "Lab. ").replace("  ", " ").replace("lab ", "Lab. ")
+        for m in _RE_LUGAR.finditer(f"{materia} {resto}")
+    ))
+    materia = _RE_LUGAR.sub(" ", materia)
     resto = _RE_LUGAR.sub(" ", resto)
     electiva = bool(_RE_ELECTIVA.search(materia))
     materia = _RE_ELECTIVA.sub(" ", materia)
     limpiar = lambda s: re.sub(r"\s+", " ", s).strip(" -–,}")  # noqa: E731
-    return Bloque(dia, inicio, fin, limpiar(materia), limpiar(resto),
-                  ", ".join(re.sub(r"\s+", " ", l).replace("Lab.", "Lab. ").replace("  ", " ") for l in lugares),
-                  electiva)
+    return Bloque(dia, inicio, fin, limpiar(materia), limpiar(resto), ", ".join(lugares), electiva)
 
 
 def leer_grillas(contenido: bytes) -> list[Grilla] | None:
@@ -207,68 +245,89 @@ def leer_grillas(contenido: bytes) -> list[Grilla] | None:
 
     crudas: list[tuple[Grilla, list[tuple[int, str, str, list[dict]]]]] = []
     encabezado_pendiente = ""  # texto de comisión que quedó al pie de la página anterior
+    columnas_previas = None    # para grillas cortadas por el salto de página
     with pdfplumber.open(io.BytesIO(contenido)) as pdf:
         for pagina in pdf.pages:
             palabras = pagina.extract_words(use_text_flow=True, extra_attrs=["fontname"])
             bordes = [r for r in pagina.rects if r["height"] <= _TOL and r["width"] > 10]
             rellenos = [r for r in pagina.rects if r["height"] > _TOL and r["width"] > _TOL]
             tope_anterior = 0.0
+            hubo_grilla = False
             tablas = sorted(pagina.find_tables(), key=lambda t: t.bbox[1])
             for tabla in tablas:
-                grilla = _grilla(pagina, tabla)
-                if not grilla:
-                    continue
-                filas, columnas = grilla
+                for seg in _segmentos(pagina, tabla, columnas_previas):
+                    filas, columnas = seg.filas, seg.columnas
+                    columnas_previas = columnas
+                    hubo_grilla = True
 
-                # Encabezado: lo escrito entre la grilla anterior y esta (comisión, aula, turno…)
-                encabezado = _unir(_palabras_en(palabras, 0, pagina.width, tope_anterior, filas[0].top - 20))
-                if "comisi" not in encabezado.lower() and encabezado_pendiente:
-                    encabezado = f"{encabezado_pendiente} {encabezado}"
-                encabezado_pendiente = ""
+                    if seg.tiene_dias or not crudas:
+                        # Encabezado: lo escrito entre la grilla anterior y esta (comisión, aula, turno…)
+                        fin_encabezado = seg.top if seg.tiene_dias else filas[0].top - 20
+                        encabezado = _unir(_palabras_en(palabras, 0, pagina.width, tope_anterior, fin_encabezado))
+                        # El pie de la página anterior completa el encabezado (año, plan,
+                        # a veces la comisión), salvo que traiga otra comisión
+                        if encabezado_pendiente and ("comisi" not in encabezado_pendiente.lower()
+                                                     or "comisi" not in encabezado.lower()):
+                            encabezado = f"{encabezado_pendiente} {encabezado}"
+                        g = Grilla(encabezado=encabezado)
+                        _datos_encabezado(g)
+                        crudas.append((g, []))
+                    encabezado_pendiente = ""
+                    bloques = crudas[-1][1]  # si es continuación, se suma a la grilla anterior
 
-                bloques = []
-                for dia, x0, x1 in columnas:
-                    i = 0
-                    while i < len(filas):
-                        j = i
-                        color = _color(rellenos, x0, x1, filas[i].top, filas[i].bottom)
-                        # Extender el bloque mientras no haya borde ni cambio de color
-                        while j + 1 < len(filas) \
-                                and not _hay_borde(bordes, filas[j].bottom, x0, x1) \
-                                and _color(rellenos, x0, x1, filas[j + 1].top, filas[j + 1].bottom) == color:
-                            j += 1
-                        ws = _palabras_en(palabras, x0, x1, filas[i].top, filas[j].bottom)
-                        if ws:
-                            bloques.append((dia, filas[i].inicio, filas[j].fin, ws))
-                        i = j + 1
-                g = Grilla(encabezado=encabezado)
-                _datos_encabezado(g)
-                crudas.append((g, bloques))
-                tope_anterior = tabla.bbox[3]
+                    for dia, x0, x1 in columnas:
+                        i = 0
+                        while i < len(filas):
+                            j = i
+                            color = _color(rellenos, x0, x1, filas[i].top, filas[i].bottom)
+                            # Extender el bloque mientras no haya borde ni cambio de color
+                            while j + 1 < len(filas) \
+                                    and not _hay_borde(bordes, filas[j].bottom, x0, x1) \
+                                    and _color(rellenos, x0, x1, filas[j + 1].top, filas[j + 1].bottom) == color:
+                                j += 1
+                            ws = _palabras_en(palabras, x0, x1, filas[i].top, filas[j].bottom)
+                            if ws:
+                                bloques.append((dia, filas[i].inicio, filas[j].fin, ws))
+                            i = j + 1
+                    # Desde la última franja (no el borde de la tabla: el encabezado de la
+                    # comisión siguiente suele estar dibujado dentro de la misma tabla)
+                    tope_anterior = filas[-1].bottom if filas else seg.top + 1
 
-            if tablas:
+            if hubo_grilla:
                 # Lo que quedó debajo de la última grilla suele ser el encabezado de la siguiente
                 encabezado_pendiente = _unir(_palabras_en(palabras, 0, pagina.width, tope_anterior, pagina.height))
 
     if not crudas:
         return None
 
-    # Catálogo de materias del PDF (bloques donde negrita y cursiva separan bien)
-    separados = [_separar(ws) for _, bs in crudas for *_, ws in bs]
+    # Catálogo de materias del PDF (bloques donde las fuentes separan bien materia y docente)
+    fuentes_materia = _fuentes_de_materia([ws for _, bs in crudas for *_, ws in bs])
+    separados = [_separar(ws, fuentes_materia) for _, bs in crudas for *_, ws in bs]
     catalogo = sorted({m for m, resto in separados if m and resto}, key=len, reverse=True)
+
+    # Plan y período son los mismos en todo el PDF: completar los que no se leyeron
+    for campo in ("plan", "periodo"):
+        valores = [getattr(g, campo) for g, _ in crudas if getattr(g, campo)]
+        if valores:
+            for g, _ in crudas:
+                if not getattr(g, campo):
+                    setattr(g, campo, max(set(valores), key=valores.count))
 
     grillas = []
     for g, bloques in crudas:
         for dia, inicio, fin, ws in bloques:
-            materia, resto = _separar(ws)
-            previo = g.bloques[-1] if g.bloques else None
+            materia, resto = _separar(ws, fuentes_materia)
             if not materia:
-                # Continuación del bloque anterior del mismo día (docente/aula partidos por una línea)
-                if previo and previo.dia == dia and previo.fin == inicio:
+                # Continuación de un bloque del mismo día que una línea o un salto de
+                # página dejó partido (docente/aula abajo, materia arriba)
+                k = next((k for k in range(len(g.bloques) - 1, -1, -1)
+                          if g.bloques[k].dia == dia and g.bloques[k].fin == inicio), None)
+                if k is not None:
+                    previo = g.bloques[k]
                     unido = _armar_bloque(dia, previo.inicio, fin, previo.materia,
                                           " ".join(x for x in (previo.docente, previo.lugar, resto) if x))
                     unido.electiva = previo.electiva
-                    g.bloques[-1] = unido
+                    g.bloques[k] = unido
                 continue
             if not resto:
                 # Todo en negrita (docente también): cortar por una materia conocida

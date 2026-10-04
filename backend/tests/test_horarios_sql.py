@@ -114,6 +114,33 @@ def test_preguntas_que_no_son_de_horarios_siguen_el_rag(base, pregunta):
     assert responder_horario(base, pregunta) is None
 
 
+def _copia_plan_2008(db, materia="Redes de Información"):
+    """Agrega la 4K01 del plan 2008 (otro PDF) con una materia propia de ese plan."""
+    doc = db.query(Documento).first()
+    for b in db.query(HorarioClase).filter(HorarioClase.comision == "4K01").all():
+        db.add(HorarioClase(documento_id=doc.id, comision="4K01", anio=4, plan="2008", turno=b.turno,
+                            periodo=b.periodo, aula=b.aula, dia=b.dia, inicio=b.inicio, fin=b.fin,
+                            materia=materia if b.materia == "Redes de Datos" else b.materia,
+                            materia_norm=(materia if b.materia == "Redes de Datos" else b.materia).lower(),
+                            docente=b.docente, lugar=b.lugar, electiva=False))
+    db.commit()
+
+
+def test_con_dos_planes_muestra_el_mas_nuevo_y_avisa(base):
+    _copia_plan_2008(base)
+    r = responder_horario(base, "¿Qué tiene la 4K01 los lunes?")
+    assert "Plan 2023" in r["respuesta"] and "Plan 2008" not in r["respuesta"]
+    assert "plan 2008" in r["respuesta"]  # aviso para quien cursa el plan viejo
+    viejo = responder_horario(base, "¿Qué tiene la 4K01 los lunes en el plan 2008?")
+    assert "Plan 2008" in viejo["respuesta"] and "Redes de Información" in viejo["respuesta"]
+
+
+def test_materia_que_solo_existe_en_el_plan_viejo(base):
+    _copia_plan_2008(base)
+    r = responder_horario(base, "¿Cuándo se dicta Redes de Información?")
+    assert "Plan 2008" in r["respuesta"]
+
+
 def test_horario_desactualizado_no_se_usa(base):
     base.query(Informacion).update({"estado": "DESACTUALIZADA"})
     base.commit()
