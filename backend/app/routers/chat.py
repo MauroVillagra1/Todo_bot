@@ -19,10 +19,23 @@ class ChatRequest(BaseModel):
     conversacion_id: str | None = Field(default=None, max_length=36)
 
 
+class FuenteRespuesta(BaseModel):
+    numero: int
+    titulo: str
+    url: str
+    fuente: str
+    fecha: str | None = None
+    estado: str
+
+
 class ChatResponse(BaseModel):
     respuesta: str
     conversacion_id: str | None = None
-    fuentes: list[str] = []
+    # CONFIRMADA | PROBABLE | NO_CONFIRMADA | DESACTUALIZADA (RAG-03)
+    estado: str
+    fuentes: list[FuenteRespuesta] = []
+    fecha_informacion: str | None = None
+    desde_cache: bool = False
 
 
 @router.post("/", response_model=ChatResponse)

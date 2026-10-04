@@ -1,7 +1,7 @@
 """
 Cliente único para el LLM (API compatible con OpenAI vía OpenRouter).
 Prueba los modelos en orden; si uno falla, sigue con el siguiente.
-Lo usa el pipeline RAG (etapa 6); el chat no lo llama mientras no haya evidencia.
+Lo usa el RAG (rag/answer.py); no se llama si la búsqueda no encontró evidencia.
 """
 import httpx
 
@@ -37,7 +37,8 @@ def completar(mensajes: list[dict], max_tokens: int = 500) -> str:
                 "temperature": 0.3,
                 "max_tokens": max_tokens,
             }
-            with httpx.Client(timeout=30) as client:
+            # Timeout corto: si hay que probar varios modelos no se pasa del límite de Vercel
+            with httpx.Client(timeout=20) as client:
                 resp = client.post(_URL_OPENROUTER, json=payload, headers=headers)
                 resp.raise_for_status()
                 data = resp.json()

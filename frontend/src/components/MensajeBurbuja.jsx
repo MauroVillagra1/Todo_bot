@@ -3,11 +3,58 @@
  * Tema oscuro, renderiza Markdown para mensajes del asistente.
  *
  * Props:
- *   mensaje:        { id, texto, tipo: 'usuario'|'asistente'|'error', timestamp }
+ *   mensaje:        { id, texto, tipo: 'usuario'|'asistente'|'error', timestamp,
+ *                     estado?, fuentes?: [{numero, titulo, url, fuente, fecha}], fecha? }
  *   logoComponent:  ReactNode — avatar del asistente (LogoUTNIA)
  */
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+
+// Estado de confianza de la respuesta (RAG-03)
+const ESTADOS = {
+  CONFIRMADA:     { label: 'Confirmada',     color: 'bg-emerald-500/15 text-emerald-400' },
+  PROBABLE:       { label: 'Probable',       color: 'bg-sky-500/15 text-sky-400' },
+  NO_CONFIRMADA:  { label: 'No confirmada',  color: 'bg-amber-500/15 text-amber-400' },
+  DESACTUALIZADA: { label: 'Desactualizada', color: 'bg-red-500/15 text-red-400' },
+  CONTRADICTORIA: { label: 'Contradictoria', color: 'bg-red-500/15 text-red-400' },
+}
+
+function fechaCorta(iso) {
+  if (!iso) return null
+  const [a, m, d] = iso.split('-')
+  return `${d}/${m}/${a}`
+}
+
+function DetalleRespuesta({ mensaje }) {
+  const estado = ESTADOS[mensaje.estado]
+  const fuentes = mensaje.fuentes ?? []
+  if (!estado && fuentes.length === 0) return null
+
+  return (
+    <div className="mt-2 pt-2 border-t border-[#232327] space-y-1.5">
+      <div className="flex flex-wrap items-center gap-2 text-[11px]">
+        {estado && (
+          <span className={`px-1.5 py-0.5 rounded-full font-medium ${estado.color}`}>{estado.label}</span>
+        )}
+        {mensaje.fecha && <span className="text-[#8b8b93]">Información del {fechaCorta(mensaje.fecha)}</span>}
+      </div>
+      {fuentes.length > 0 && (
+        <ol className="text-[11px] text-[#8b8b93] space-y-0.5">
+          {fuentes.map(f => (
+            <li key={f.numero}>
+              [{f.numero}]{' '}
+              <a href={f.url} target="_blank" rel="noopener noreferrer"
+                 className="text-[#f2894f] underline underline-offset-2 hover:text-[#e8592e]">
+                {f.titulo}
+              </a>
+              {' — '}{f.fuente}{f.fecha && `, ${fechaCorta(f.fecha)}`}
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  )
+}
 
 export default function MensajeBurbuja({ mensaje, logoComponent }) {
   const esUsuario  = mensaje.tipo === 'usuario'
@@ -73,6 +120,7 @@ export default function MensajeBurbuja({ mensaje, logoComponent }) {
               {mensaje.texto}
             </ReactMarkdown>
           )}
+          {esAsistente && <DetalleRespuesta mensaje={mensaje} />}
         </div>
 
         {/* Timestamp */}

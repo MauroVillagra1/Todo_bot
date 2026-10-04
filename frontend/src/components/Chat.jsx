@@ -76,7 +76,10 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
       if (data.conversacion_id) setConversacionId(data.conversacion_id)
       setMensajes(prev => [
         ...prev,
-        { id: Date.now() + 1, tipo: 'asistente', texto: data.respuesta, timestamp: ahora() },
+        {
+          id: Date.now() + 1, tipo: 'asistente', texto: data.respuesta, timestamp: ahora(),
+          estado: data.estado, fuentes: data.fuentes ?? [], fecha: data.fecha_informacion,
+        },
       ])
     } catch (err) {
       let textoError = 'Ocurrió un error al procesar tu consulta. Intentá de nuevo.'

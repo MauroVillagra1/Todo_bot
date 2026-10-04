@@ -78,6 +78,38 @@ def test_dividir_respeta_el_maximo_y_agrega_titulo():
     assert dividir("Titulo", "   ") == []
 
 
+# ── Adaptador WordPress ───────────────────────────────────────────────────────
+
+def test_wordpress_pagina_por_id_y_pide_solo_lo_modificado():
+    import httpx
+
+    from app.ingest.sources.wordpress import WordPressSource
+
+    pedidos = []
+
+    def responder(request: httpx.Request) -> httpx.Response:
+        pedidos.append(dict(request.url.params))
+        pagina = int(request.url.params["page"])
+        post = {"id": pagina, "link": f"https://x/{pagina}", "title": {"rendered": "A &amp; B"},
+                "content": {"rendered": "<p>x</p>"}, "date_gmt": "2026-09-01T10:00:00",
+                "modified_gmt": "2026-09-02T06:13:54"}
+        return httpx.Response(200, json=[post], headers={"X-WP-TotalPages": "2"})
+
+    fuente = Fuente(nombre="WP", tipo=TipoFuenteEnum.WORDPRESS, url="https://x",
+                    confiabilidad_base=100, config={"api": "https://x/wp-json/wp/v2", "tipos": ["posts"]})
+    adaptador = WordPressSource(fuente)
+    adaptador.transport, adaptador.pausa = httpx.MockTransport(responder), 0
+
+    items = list(adaptador.obtener_cambios(_fecha(1)))
+
+    assert [i.id_externo for i in items] == ["posts:1", "posts:2"]
+    assert items[0].titulo == "A & B"
+    assert items[0].fecha_modificacion == datetime(2026, 9, 2, 6, 13, 54, tzinfo=timezone.utc)
+    # orden estable (id) y fecha con zona explícita para que WordPress compare en GMT
+    assert all(p["orderby"] == "id" for p in pedidos)
+    assert pedidos[0]["modified_after"] == "2026-09-01T12:00:00+00:00"
+
+
 # ── Pipeline ──────────────────────────────────────────────────────────────────
 
 def test_reingesta_sin_cambios_no_crea_nada(db, fuente):

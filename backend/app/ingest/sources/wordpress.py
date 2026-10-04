@@ -25,12 +25,16 @@ def _fecha_gmt(valor: str | None) -> datetime | None:
 
 
 class WordPressSource(Source):
+    transport: httpx.BaseTransport | None = None  # solo para tests
+    pausa = PAUSA_ENTRE_PAGINAS
+
     def obtener_cambios(self, desde: datetime | None) -> Iterator[ItemCrudo]:
         api = self.config["api"].rstrip("/")
         por_pagina = int(self.config.get("por_pagina", 50))
 
         with httpx.Client(
-            timeout=30, follow_redirects=True, headers={"User-Agent": USER_AGENT}
+            timeout=30, follow_redirects=True, headers={"User-Agent": USER_AGENT},
+            transport=self.transport,
         ) as client:
             for tipo in self.config.get("tipos", ["posts"]):
                 pagina = 1
@@ -38,7 +42,9 @@ class WordPressSource(Source):
                     params = {
                         "per_page": por_pagina,
                         "page": pagina,
-                        "orderby": "modified",
+                        # Orden por ID (único). Por "modified" la paginación no es estable:
+                        # cientos de posts comparten el mismo segundo y se repetían/salteaban.
+                        "orderby": "id",
                         "order": "asc",
                         "_fields": "id,link,title,content,date_gmt,modified_gmt",
                     }
@@ -61,7 +67,7 @@ class WordPressSource(Source):
                     if pagina >= total_paginas:
                         break
                     pagina += 1
-                    time.sleep(PAUSA_ENTRE_PAGINAS)
+                    time.sleep(self.pausa)
 
     @staticmethod
     def _get(client: httpx.Client, url: str, params: dict) -> httpx.Response:
