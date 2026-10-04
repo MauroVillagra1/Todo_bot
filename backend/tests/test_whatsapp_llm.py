@@ -110,3 +110,12 @@ def test_si_un_proveedor_se_queda_sin_cupo_pasa_al_siguiente(monkeypatch):
     assert llm.completar([{"role": "user", "content": "x"}]) == "hola"
     # Gemini no se intenta: no tiene key
     assert [m for _, m in pedidos] == ["modelo-a:free", "modelo-b"]
+
+
+def test_auto_elige_el_flash_lite_estable_mas_nuevo():
+    ids = ["models/gemini-2.5-flash-lite", "models/gemini-3.5-flash-lite", "models/gemini-3.1-flash-lite",
+           "models/gemini-3.1-flash-lite-preview", "models/gemini-3.8-flash", "models/gemini-3.5-flash-lite-image"]
+    assert llm.elegir_modelo("gemini", ids) == "gemini-3.5-flash-lite"
+    assert llm.elegir_modelo("groq", ["whisper-large-v3", "llama-3.1-8b-instant", "llama-3.3-70b-versatile"]) \
+        == "llama-3.3-70b-versatile"
+    assert llm.elegir_modelo("gemini", ["models/gemini-embedding-001"]) is None

@@ -39,7 +39,7 @@ class Settings(BaseSettings):
 
     # Otros proveedores gratuitos de respaldo ("proveedor|modelo"), en orden.
     # Sin su API key se saltean. Ver services/llm.py.
-    AI_PROVEEDORES: List[str] = []
+    AI_PROVEEDORES: List[str] = ["gemini|auto", "groq|auto"]
     GROQ_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
 

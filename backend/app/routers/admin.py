@@ -93,7 +93,10 @@ def diagnostico(_admin=Depends(require_admin)):
         "openrouter_key_configurada": bool(settings.OPENROUTER_API_KEY.strip()),
         "groq_key_configurada": bool(settings.GROQ_API_KEY.strip()),
         "gemini_key_configurada": bool(settings.GEMINI_API_KEY.strip()),
-        "cadena_de_modelos": [f"{p}/{m}" for p, m in llm.cadena_de_modelos()],
+        "cadena_de_modelos": [
+            f"{p}/{llm.modelo_auto(p) or 'sin modelo disponible' if m == 'auto' else m}"
+            for p, m in llm.cadena_de_modelos() if llm._key(p)
+        ],
         "whatsapp_configurado": bool(settings.WHATSAPP_APP_SECRET and settings.WHATSAPP_VERIFY_TOKEN),
     }
     try:
