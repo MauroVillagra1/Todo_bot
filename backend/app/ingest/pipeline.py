@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.ingest.chunk import dividir
 from app.ingest.extract import hash_bytes, hash_texto, html_a_texto, pdf_a_paginas
+from app.ingest.horarios import leer_horarios
 from app.ingest.sources import DocumentoCrudo, ItemCrudo, Source, obtener_adaptador
 from app.models.ingesta import (
     Chunk, Documento, EstadoIngestaEnum, Fuente, Ingesta, Publicacion, TipoDocumentoEnum,
@@ -67,9 +68,23 @@ def chunks_de_paginas(nombre: str, paginas: list[str]) -> list[str]:
     return [trozo for pagina in paginas for trozo in dividir(nombre, pagina, MAX_CARACTERES_PAGINA)]
 
 
+def leer_pdf(contenido: bytes) -> list[str]:
+    """
+    Partes de texto de un PDF: una por grilla si es un horario (lector de
+    celdas combinadas), si no una por página (extracción con columnas).
+    """
+    try:
+        grillas = leer_horarios(contenido)
+        if grillas:
+            return grillas
+    except Exception:
+        pass  # PDF raro: se usa la extracción común
+    return pdf_a_paginas(contenido)
+
+
 def guardar_documento(db: Session, fuente: Fuente, doc: DocumentoCrudo) -> str:
-    """Igual que guardar_publicacion, para archivos (PDF). Un chunk por página."""
-    paginas = pdf_a_paginas(doc.contenido)
+    """Igual que guardar_publicacion, para archivos (PDF). Un chunk por página o por grilla."""
+    paginas = leer_pdf(doc.contenido)
     texto = "\n\n".join(p for p in paginas if p)
     # PDF sin texto (escaneado): el hash del archivo evita reprocesarlo
     h = hash_texto(f"{doc.nombre}\n{texto}") if texto else hash_bytes(doc.contenido)

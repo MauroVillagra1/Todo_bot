@@ -19,9 +19,9 @@ passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 python-multipart==0.0.9
 
-# Ingesta: extracción de texto de HTML y PDF
+# Extracción de texto de HTML (también la usa la carga manual de la API).
+# Las librerías de PDF están en requirements-ingesta.txt: solo las usa el worker.
 beautifulsoup4==4.13.4
-pypdf==6.1.1
 
 # IA
 httpx==0.27.0

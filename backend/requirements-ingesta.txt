@@ -1,0 +1,6 @@
+# Worker de ingesta (GitHub Actions o local). No se instala en Vercel.
+-r requirements.txt
+
+# PDFs: texto (pypdf) y grillas de horarios con celdas combinadas (pdfplumber)
+pypdf==6.1.1
+pdfplumber==0.11.10
