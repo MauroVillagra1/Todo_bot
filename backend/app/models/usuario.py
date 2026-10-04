@@ -4,14 +4,14 @@ Roles:
   - administrador       → acceso completo, gestión de cuentas
   - administrativo      → carga eventos de calendario generales
   - jefe_departamento   → gestiona materias/comisiones de su carrera, hace anuncios
-  - profesor            → gestiona sus propias cursadas (suspensiones, material, info)
+  - profesor            → legacy (se migra en la etapa 1 a MIEMBRO/MOD/ADMIN)
   - alumno              → solo lectura de su comisión
 """
 import enum
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Enum, String, func
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
 
@@ -44,15 +44,6 @@ class Usuario(Base):
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
-    )
-
-    # Comisiones en las que participa (como alumno)
-    comisiones: Mapped[list["UsuarioComision"]] = relationship(
-        "UsuarioComision", back_populates="usuario", cascade="all, delete-orphan"
-    )
-    # Cursadas en las que participa (como profesor)
-    cursadas_como_profesor: Mapped[list["CursadaProfesor"]] = relationship(
-        "CursadaProfesor", back_populates="profesor", cascade="all, delete-orphan"
     )
 
     @property

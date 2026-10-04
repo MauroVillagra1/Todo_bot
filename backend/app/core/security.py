@@ -12,6 +12,12 @@ from app.core.config import get_settings
 settings = get_settings()
 
 # ── Hashing de contraseñas (bcrypt) ───────────────────────────────────────────
+# passlib 1.7.4 + bcrypt >= 4.0 tienen un warning que en algunos entornos
+# se convierte en error. Este workaround lo silencia.
+import bcrypt as _bcrypt  # noqa: E402
+import passlib.handlers.bcrypt as _ph_bcrypt  # noqa: E402
+_ph_bcrypt.__version__ = _bcrypt.__version__
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 

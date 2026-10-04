@@ -1,5 +1,6 @@
 /**
  * Login — pantalla de inicio de sesión.
+ * Tema oscuro consistente con el resto de la app.
  *
  * Props:
  *   onLogin: función que recibe (token, usuario) cuando el login es exitoso
@@ -7,17 +8,31 @@
 import { useState } from 'react'
 import { login } from '../api'
 
+const LOGO_URL = 'https://res.cloudinary.com/dol1ba0ld/image/upload/v1787954474/asd/Preguntale_a_UTNIA_xwocbf.png'
+
+function LogoUTNIA({ size = 48 }) {
+  return (
+    <img
+      src={LOGO_URL}
+      alt="UTNIA"
+      width={size}
+      height={size}
+      className="rounded-full object-cover flex-shrink-0"
+      style={{ width: size, height: size }}
+    />
+  )
+}
+
 export default function Login({ onLogin }) {
-  const [email, setEmail]       = useState('')
+  const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError]       = useState('')
+  const [error,    setError]    = useState('')
   const [cargando, setCargando] = useState(false)
 
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
     setCargando(true)
-
     try {
       const data = await login(email, password)
       onLogin(data.access_token, data.usuario)
@@ -27,7 +42,7 @@ export default function Login({ onLogin }) {
       } else if (err.response?.status === 422) {
         setError('Por favor completá todos los campos.')
       } else {
-        setError('No se pudo conectar con el servidor. Verificá que el backend esté corriendo.')
+        setError('No se pudo conectar con el servidor.')
       }
     } finally {
       setCargando(false)
@@ -35,81 +50,86 @@ export default function Login({ onLogin }) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 to-blue-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-lg w-full max-w-md p-8">
+    <div className="min-h-screen bg-[#0a0a0c] flex items-center justify-center p-4">
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
+        .font-display { font-family: 'Space Grotesk', sans-serif; }
+        .font-body    { font-family: 'Inter', sans-serif; }
+      `}</style>
 
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-primary-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <span className="text-white text-2xl font-bold">AU</span>
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900">Asistente Universitario</h1>
-          <p className="text-gray-500 text-sm mt-1">Ingresá con tu cuenta institucional</p>
+      <div className="w-full max-w-sm">
+
+        {/* Logo + título */}
+        <div className="flex flex-col items-center mb-8">
+          <LogoUTNIA size={52} />
+          <h1 className="font-display text-2xl font-semibold text-[#f4f4f5] mt-4 tracking-tight">
+            UTNIA
+          </h1>
+          <p className="font-body text-sm text-[#8b8b93] mt-1">
+            Ingresá con tu cuenta institucional
+          </p>
         </div>
 
-        {/* Formulario */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email institucional
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="tu@universidad.edu"
-              required
-              autoFocus
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm
-                         focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
-                         transition-colors"
-            />
-          </div>
+        {/* Card */}
+        <div className="bg-[#0d0d10] border border-[#1e1e22] rounded-2xl p-6">
+          <form onSubmit={handleSubmit} className="space-y-4">
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Contraseña
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm
-                         focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
-                         transition-colors"
-            />
-          </div>
-
-          {/* Error */}
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
-              {error}
+            <div>
+              <label className="block font-body text-xs font-medium text-[#8b8b93] mb-1.5">
+                Email institucional
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="tu@frt.utn.edu.ar"
+                required
+                autoFocus
+                className="w-full bg-[#141417] border border-[#232327] rounded-xl px-4 py-2.5
+                           font-body text-sm text-[#f4f4f5] placeholder-[#4b4b53]
+                           focus:outline-none focus:border-[#e8592e]/50 transition-colors"
+              />
             </div>
-          )}
 
-          <button
-            type="submit"
-            disabled={cargando}
-            className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-primary-300
-                       text-white font-medium py-2.5 px-4 rounded-lg text-sm
-                       transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
-          >
-            {cargando ? 'Ingresando...' : 'Ingresar'}
-          </button>
-        </form>
+            <div>
+              <label className="block font-body text-xs font-medium text-[#8b8b93] mb-1.5">
+                Contraseña
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                className="w-full bg-[#141417] border border-[#232327] rounded-xl px-4 py-2.5
+                           font-body text-sm text-[#f4f4f5] placeholder-[#4b4b53]
+                           focus:outline-none focus:border-[#e8592e]/50 transition-colors"
+              />
+            </div>
 
-        {/* Credenciales de prueba */}
-        <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-          <p className="text-xs font-semibold text-gray-500 mb-2">CUENTAS DE PRUEBA</p>
-          <div className="space-y-1 text-xs text-gray-600 font-mono">
-            <div>admin@universidad.edu / Admin1234</div>
-            <div>garcia@universidad.edu / Profe1234</div>
-            <div>ana@universidad.edu / Alumno1234</div>
-          </div>
+            {/* Error */}
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/20 text-red-300 font-body text-sm px-4 py-3 rounded-xl">
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={cargando}
+              className="w-full bg-[#e8592e] hover:bg-[#f2703f] disabled:bg-[#232327]
+                         disabled:text-[#4b4b53] disabled:cursor-not-allowed
+                         text-white font-body font-medium py-2.5 px-4 rounded-xl text-sm
+                         transition-colors focus:outline-none mt-2"
+            >
+              {cargando ? 'Ingresando...' : 'Ingresar'}
+            </button>
+          </form>
         </div>
 
+        <p className="font-body text-[11px] text-[#4b4b53] text-center mt-4">
+          UTN — Facultad Regional Tucumán
+        </p>
       </div>
     </div>
   )

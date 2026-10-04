@@ -24,10 +24,13 @@ engine = create_engine(
 
 @event.listens_for(engine, "connect")
 def _enable_pgvector(dbapi_conn, connection_record):
-    """Activa la extensión pgvector en cada nueva conexión al pool."""
-    with dbapi_conn.cursor() as cursor:
-        cursor.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-    dbapi_conn.commit()
+    """Activa la extensión pgvector si está disponible (silencia el error si no lo está)."""
+    try:
+        with dbapi_conn.cursor() as cursor:
+            cursor.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+        dbapi_conn.commit()
+    except Exception:
+        dbapi_conn.rollback()
 
 
 # ── Fábrica de sesiones ────────────────────────────────────────────────────────

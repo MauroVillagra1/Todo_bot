@@ -1,65 +1,73 @@
 /**
- * MensajeBurbuja — muestra un mensaje individual del historial de chat.
- * Renderiza Markdown para los mensajes del asistente.
+ * MensajeBurbuja — mensaje individual del historial de chat.
+ * Tema oscuro, renderiza Markdown para mensajes del asistente.
  *
  * Props:
- *   mensaje: { texto, tipo: 'usuario' | 'asistente' | 'error', timestamp }
+ *   mensaje:        { id, texto, tipo: 'usuario'|'asistente'|'error', timestamp }
+ *   logoComponent:  ReactNode — avatar del asistente (LogoUTNIA)
  */
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
-export default function MensajeBurbuja({ mensaje }) {
-  const esUsuario = mensaje.tipo === 'usuario'
-  const esError   = mensaje.tipo === 'error'
+export default function MensajeBurbuja({ mensaje, logoComponent }) {
+  const esUsuario  = mensaje.tipo === 'usuario'
+  const esError    = mensaje.tipo === 'error'
+  const esAsistente = mensaje.tipo === 'asistente'
 
   return (
-    <div className={`flex w-full mb-3 ${esUsuario ? 'justify-end' : 'justify-start'}`}>
+    <div className={`msg-in flex w-full mb-4 ${esUsuario ? 'justify-end' : 'justify-start'}`}>
 
-      {/* Avatar del asistente */}
+      {/* Avatar asistente */}
       {!esUsuario && (
-        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary-600 flex items-center justify-center mr-2 mt-1">
-          <span className="text-white text-xs font-bold">AU</span>
+        <div className="mr-2.5 mt-0.5 flex-shrink-0">
+          {logoComponent}
         </div>
       )}
 
-      <div className={`max-w-[75%] flex flex-col ${esUsuario ? 'items-end' : 'items-start'}`}>
+      <div className={`flex flex-col max-w-[80%] ${esUsuario ? 'items-end' : 'items-start'}`}>
         <div
           className={`
-            px-4 py-3 rounded-2xl text-sm leading-relaxed break-words
+            font-body text-sm leading-relaxed break-words px-4 py-2.5 rounded-2xl
             ${esUsuario
-              ? 'bg-primary-600 text-white rounded-br-sm'
+              ? 'bg-[#e8592e] text-white rounded-br-sm'
               : esError
-                ? 'bg-red-50 text-red-700 border border-red-200 rounded-bl-sm'
-                : 'bg-white text-gray-800 border border-gray-200 shadow-sm rounded-bl-sm'
+                ? 'bg-red-500/10 text-red-300 border border-red-500/20 rounded-bl-sm'
+                : 'bg-[#17171b] text-[#e4e4e7] border border-[#232327] rounded-bl-sm'
             }
           `}
         >
           {esUsuario ? (
-            // Mensajes del usuario: texto plano
             <span className="whitespace-pre-wrap">{mensaje.texto}</span>
           ) : (
-            // Mensajes del asistente y errores: renderizar Markdown
             <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
               components={{
-                // Párrafos con espaciado
-                p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                // Listas
-                ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
-                ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
-                li: ({ children }) => <li>{children}</li>,
-                // Negrita
-                strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-                // Código inline
-                code: ({ children }) => (
-                  <code className="bg-gray-100 text-gray-800 px-1 py-0.5 rounded text-xs font-mono">
+                p:      ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                ul:     ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
+                ol:     ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
+                li:     ({ children }) => <li>{children}</li>,
+                strong: ({ children }) => <strong className="font-semibold text-[#f4f4f5]">{children}</strong>,
+                em:     ({ children }) => <em className="italic text-[#c7c7cf]">{children}</em>,
+                code:   ({ children }) => (
+                  <code className="bg-[#0d0d10] text-[#f2894f] px-1.5 py-0.5 rounded text-xs font-mono border border-[#232327]">
                     {children}
                   </code>
                 ),
-                // Encabezados
-                h1: ({ children }) => <h1 className="font-bold text-base mb-1">{children}</h1>,
-                h2: ({ children }) => <h2 className="font-bold text-sm mb-1">{children}</h2>,
-                h3: ({ children }) => <h3 className="font-semibold text-sm mb-1">{children}</h3>,
-                // Separador horizontal
-                hr: () => <hr className="my-2 border-gray-200" />,
+                pre:    ({ children }) => (
+                  <pre className="bg-[#0d0d10] border border-[#232327] rounded-lg p-3 overflow-x-auto text-xs font-mono mb-2">
+                    {children}
+                  </pre>
+                ),
+                h1: ({ children }) => <h1 className="font-display font-bold text-base mb-1 text-[#f4f4f5]">{children}</h1>,
+                h2: ({ children }) => <h2 className="font-display font-bold text-sm mb-1 text-[#f4f4f5]">{children}</h2>,
+                h3: ({ children }) => <h3 className="font-display font-semibold text-sm mb-1 text-[#f4f4f5]">{children}</h3>,
+                hr:  () => <hr className="my-2 border-[#232327]" />,
+                a:  ({ href, children }) => (
+                  <a href={href} target="_blank" rel="noopener noreferrer"
+                     className="text-[#f2894f] underline underline-offset-2 hover:text-[#e8592e]">
+                    {children}
+                  </a>
+                ),
               }}
             >
               {mensaje.texto}
@@ -68,15 +76,16 @@ export default function MensajeBurbuja({ mensaje }) {
         </div>
 
         {/* Timestamp */}
-        <span className="text-xs text-gray-400 mt-1 px-1">
+        <span className={`text-[10px] mt-1 px-1 ${esUsuario ? 'text-white/40' : 'text-[#6b6b73]'}`}>
           {mensaje.timestamp}
         </span>
       </div>
 
-      {/* Avatar del usuario */}
+      {/* Avatar usuario */}
       {esUsuario && (
-        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center ml-2 mt-1">
-          <span className="text-gray-600 text-xs font-bold">Yo</span>
+        <div className="ml-2.5 mt-0.5 flex-shrink-0 w-[26px] h-[26px] rounded-full bg-[#1a1a1e]
+                        border border-[#232327] flex items-center justify-center">
+          <span className="text-[#8b8b93] text-[10px] font-bold">Yo</span>
         </div>
       )}
 

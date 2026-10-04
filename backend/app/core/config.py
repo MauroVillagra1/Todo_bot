@@ -14,6 +14,8 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        # Variables viejas en un .env (ej. RATE_LIMIT_CHAT) no deben romper el arranque
+        extra="ignore",
     )
 
     # ── Base de datos ──────────────────────────────────────────────────────────
@@ -25,11 +27,18 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
     # ── IA ────────────────────────────────────────────────────────────────────
-    GROQ_API_KEY: str
-    GROQ_MODEL: str = "llama-3.1-8b-instant"
+    # OpenRouter — https://openrouter.ai
+    OPENROUTER_API_KEY: str = ""
+    AI_MODEL: str = "nex-agi/nex-n2.5-pro:free"
+    SITE_URL: str = "https://utnia.netlify.app"
+    SITE_NAME: str = "Asistente UTN"
+
+    # Modelos alternativos si AI_MODEL falla (en orden)
+    AI_MODELOS_RESPALDO: List[str] = ["nex-agi/nex-n2.5-mini:free"]
 
     # ── Rate limiting ─────────────────────────────────────────────────────────
-    RATE_LIMIT_CHAT: str = "20/minute"
+    # Mensajes por usuario por minuto (se cuenta en Postgres: funciona en serverless)
+    CHAT_MAX_POR_MINUTO: int = 10
 
     # ── Entorno ───────────────────────────────────────────────────────────────
     ENVIRONMENT: str = "development"

@@ -131,21 +131,15 @@ Debería devolver `{"status": "ok"}`
 **d) Ver tus datos**
 - `GET /api/v1/auth/me` → devuelve el usuario logueado
 
-**e) Listar materias**
-- `GET /api/v1/materias` → debería traer las 4 materias del seed
-
-**f) Listar cursadas como alumno**
-- Hacé login con `ana@universidad.edu / Alumno1234`
-- `GET /api/v1/cursadas` → Ana solo ve las cursadas de su comisión (2K1)
-
-**g) Probar el chat**
+**e) Probar el chat**
 - `POST /api/v1/chat/`
 ```json
 {
-  "mensaje": "¿Cuándo es matemática?"
+  "mensaje": "¿Cuándo son las mesas de examen?"
 }
 ```
-- Devuelve un placeholder (la IA se implementa en la siguiente etapa)
+- Mientras no haya información institucional cargada responde "Todavía no tengo información institucional cargada…" sin llamar a la IA.
+- Más de `CHAT_MAX_POR_MINUTO` mensajes en un minuto → `429`.
 
 ---
 
@@ -160,13 +154,10 @@ TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
 
 echo "Token obtenido: ${TOKEN:0:20}..."
 
-# Listar materias
-curl -s http://localhost:8000/api/v1/materias \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
-
-# Ver cursadas
-curl -s http://localhost:8000/api/v1/cursadas \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+# Consultar el chat
+curl -s -X POST http://localhost:8000/api/v1/chat/ \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"mensaje":"¿Cuándo son las mesas de examen?"}' | python3 -m json.tool
 ```
 
 ---

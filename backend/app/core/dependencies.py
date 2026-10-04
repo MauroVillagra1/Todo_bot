@@ -2,14 +2,14 @@
 Dependencias reutilizables de FastAPI para autenticación y autorización (RBAC).
 """
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import decode_access_token
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+http_bearer = HTTPBearer()
 
 # Grupos de roles
 _ROLES_STAFF      = {"administrador", "administrativo", "jefe_departamento", "profesor", "profesor_directivo"}
@@ -20,7 +20,7 @@ _ROLES_CALENDARIO = {"administrador", "administrativo"}
 
 
 def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    credentials: HTTPAuthorizationCredentials = Depends(http_bearer),
     db: Session = Depends(get_db),
 ):
     from app.models.usuario import Usuario
@@ -31,7 +31,7 @@ def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = decode_access_token(token)
+        payload = decode_access_token(credentials.credentials)
         user_id: str = payload.get("sub")
         if user_id is None:
             raise credentials_exception
