@@ -312,3 +312,18 @@ def test_limpiar_docente(texto, esperado):
 ])
 def test_limpiar_materia(materia, docente, esperado):
     assert limpiar_materia(materia, docente) == esperado
+
+
+def test_consulta_de_horarios_no_baja_el_pdf(base):
+    """Cada clase venía con el PDF completo de su documento: gigas de transferencia."""
+    from sqlalchemy import event
+    sqls = []
+    escuchar = lambda conn, cursor, sql, *a: sqls.append(sql)  # noqa: E731
+    event.listen(base.get_bind(), "before_cursor_execute", escuchar)
+    try:
+        base.expire_all()
+        assert responder(base, "¿Qué materias da Moyano?") is not None
+    finally:
+        event.remove(base.get_bind(), "before_cursor_execute", escuchar)
+    consultas = " ".join(sqls)
+    assert "contenido_original" not in consultas and "texto_extraido" not in consultas

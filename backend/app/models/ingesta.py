@@ -82,9 +82,11 @@ class Documento(Base):
         Enum(TipoDocumentoEnum, name="tipodocumentoenum"), nullable=False
     )
     # Original comprimido (gzip). Los PDFs grandes pueden ir a storage externo.
-    contenido_original: Mapped[bytes | None] = mapped_column(LargeBinary)
+    # deferred: no se bajan salvo que se lean. Antes cada consulta de horarios traía el PDF
+    # completo por cada clase (gigas de transferencia en Neon).
+    contenido_original: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
     storage_key: Mapped[str | None] = mapped_column(String(500))
-    texto_extraido: Mapped[str | None] = mapped_column(Text)
+    texto_extraido: Mapped[str | None] = mapped_column(Text, deferred=True)
     # sha256 del contenido: detecta duplicados sin LLM
     hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     etag: Mapped[str | None] = mapped_column(String(200))
