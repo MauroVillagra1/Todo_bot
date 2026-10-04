@@ -31,19 +31,23 @@ LEXEMAS_IGNORADOS = ["proxim", "siguient", "pront", "falt", "cuant"]
 # mesas de noviembre sirve más que un aviso confirmado de una mesa que ya pasó.
 _TEMPORAL = re.compile(r"\b(proxim[oa]s?|siguientes?|pronto|falta|cuanto|cuando)\b")
 PESO_FECHA_FUTURA = 3.0
+PESO_TITULO = 4.0
 
 _SQL = text("""
 WITH lex AS (
     SELECT lexeme FROM unnest(to_tsvector('spanish', sin_tildes(:pregunta)))
     WHERE lexeme <> ALL(:ignorados)
+), pat AS (
+    -- Prefijo solo con raíces de 4+ letras: 'bec':* (de "becas") traía "become"
+    SELECT quote_literal(lexeme) || CASE WHEN length(lexeme) > 3 THEN ':*' ELSE '' END AS p FROM lex
 ), q AS (
-    SELECT to_tsquery('spanish', string_agg(quote_literal(lexeme) || ':*', ' | ')) AS tsq,
+    SELECT to_tsquery('spanish', string_agg(p, ' | ')) AS tsq,
+           to_tsquery('spanish', string_agg(p, ' & ')) AS tsq_todas,
            count(*) AS n
-    FROM lex
+    FROM pat
 ), candidatos AS (
-    SELECT c.*, q.tsq, q.n,
-           (SELECT count(*) FROM lex
-             WHERE c.tsv @@ to_tsquery('spanish', quote_literal(lex.lexeme) || ':*')) AS coinciden
+    SELECT c.*, q.tsq, q.tsq_todas, q.n,
+           (SELECT count(*) FROM pat WHERE c.tsv @@ to_tsquery('spanish', pat.p)) AS coinciden
     FROM q JOIN chunks c ON c.tsv @@ q.tsq
 )
 SELECT c.id AS chunk_id, i.id AS informacion_id,
@@ -58,6 +62,9 @@ SELECT c.id AS chunk_id, i.id AS informacion_id,
              WHEN 'CONFIRMADA' THEN 1.0 WHEN 'PROBABLE' THEN 0.8
              WHEN 'NO_CONFIRMADA' THEN 0.5 ELSE 0.25 END
          * CASE WHEN i.tipo::text = :tipo THEN 1.5 ELSE 1.0 END
+         -- Todas las palabras de la pregunta en el título: es de eso ("Beca de Verano en Austria")
+         * CASE WHEN to_tsvector('spanish', sin_tildes(coalesce(p.titulo, d.nombre, ''))) @@ c.tsq_todas
+                THEN :peso_titulo ELSE 1.0 END
          -- Con fecha_inicio = fechas leídas del texto (sin fechas el vencimiento es "1 año" supuesto)
          * CASE WHEN i.fecha_inicio IS NOT NULL AND i.fecha_fin >= current_date
                 THEN :peso_futuro ELSE 1.0 END AS puntaje
@@ -93,7 +100,7 @@ def buscar(db: Session, pregunta: str, max_resultados: int = MAX_RESULTADOS) -> 
     filas = db.execute(
         _SQL,
         {"pregunta": pregunta, "tipo": "" if ambiguo else tipo.value, "limite": max_resultados * 4,
-         "cobertura": COBERTURA_MINIMA, "ignorados": LEXEMAS_IGNORADOS,
+         "cobertura": COBERTURA_MINIMA, "ignorados": LEXEMAS_IGNORADOS, "peso_titulo": PESO_TITULO,
          "peso_futuro": PESO_FECHA_FUTURA if _TEMPORAL.search(normalizar(pregunta)) else 1.0},
     ).mappings().all()
 
