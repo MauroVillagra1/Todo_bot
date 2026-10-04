@@ -20,6 +20,7 @@ from app.core.config import get_settings
 from app.ingest.classify import normalizar
 from app.models.cache import CacheRespuesta
 from app.models.informacion import Informacion
+from app.models.ingesta import Chunk
 from app.rag.search import Resultado, buscar
 from app.services import llm
 from app.services.metricas import incrementar
@@ -57,7 +58,9 @@ def _utc(fecha: datetime | None) -> datetime | None:
 def clave_cache(db: Session, pregunta: str) -> str:
     """Pregunta normalizada + versión de los datos (cambia cuando la ingesta toca algo)."""
     total, ultima = db.query(func.count(Informacion.id), func.max(Informacion.updated_at)).one()
-    base = f"{normalizar(pregunta).strip(' ?¿!¡.')}|{total}|{ultima}"
+    # Los chunks se pueden regenerar sin tocar informaciones (ej. reextraer PDFs)
+    ultimo_chunk = db.query(func.max(Chunk.id)).scalar()
+    base = f"{normalizar(pregunta).strip(' ?¿!¡.')}|{total}|{ultima}|{ultimo_chunk}"
     return hashlib.sha256(base.encode("utf-8")).hexdigest()
 
 

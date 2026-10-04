@@ -11,6 +11,7 @@ import pytest
 from app.models.cache import CacheRespuesta
 from app.models.chat import MensajeChat
 from app.models.informacion import Informacion
+from app.models.ingesta import Chunk
 from app.models.metrica import MetricaDiaria
 from app.models.usuario import RolEnum
 from app.rag import answer
@@ -27,7 +28,7 @@ def _r(n, estado="CONFIRMADA", dia=20):
 @pytest.fixture
 def rag(db, monkeypatch):
     engine = db.get_bind()
-    for m in (MensajeChat, CacheRespuesta, MetricaDiaria, Informacion):
+    for m in (MensajeChat, CacheRespuesta, MetricaDiaria, Informacion, Chunk):
         m.__table__.create(engine)
     llamadas = {"llm": [], "busquedas": []}
     estado = {"resultados": [_r(1), _r(2, "PROBABLE", dia=25)], "texto": "Hasta el 28/11 [1]."}
