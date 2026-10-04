@@ -1,6 +1,8 @@
 """
 Dependencias reutilizables de FastAPI para autenticación y autorización (RBAC).
 """
+from datetime import timedelta, timezone
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
@@ -34,9 +36,21 @@ def get_current_user(
     user = db.get(Usuario, int(user_id))
     if user is None:
         raise credentials_exception
-    if not user.activo:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuario inactivo")
+    motivo = motivo_suspension(user)
+    if motivo:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=motivo)
     return user
+
+
+def motivo_suspension(user) -> str | None:
+    """Mensaje para el usuario si su cuenta está suspendida (permanente o temporal), o None."""
+    if not user.activo:
+        return "Tu cuenta fue suspendida" + (f": {user.motivo_ban}" if user.motivo_ban else ".")
+    hasta = user.suspendido_hasta()
+    if hasta:
+        fecha = hasta.astimezone(timezone(timedelta(hours=-3))).strftime("%d/%m/%Y %H:%M")
+        return f"Tu cuenta está suspendida hasta el {fecha}" + (f": {user.motivo_ban}" if user.motivo_ban else ".")
+    return None
 
 
 def require_rol(*roles: str):

@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, motivo_suspension
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.codigo import CodigoVerificacion, PropositoCodigoEnum as P
 from app.models.usuario import RolEnum, Usuario
@@ -42,7 +42,7 @@ def login(credentials: LoginRequest, db: Session = Depends(get_db)):
     """
     user: Usuario | None = (
         db.query(Usuario)
-        .filter(Usuario.email == credentials.email, Usuario.activo == True)  # noqa: E712
+        .filter(Usuario.email == credentials.email)
         .first()
     )
 
@@ -57,6 +57,11 @@ def login(credentials: LoginRequest, db: Session = Depends(get_db)):
             detail="Email o contraseña incorrectos",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Solo con la contraseña correcta se avisa que la cuenta está suspendida
+    motivo = motivo_suspension(user)
+    if motivo:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=motivo)
 
     token = create_access_token(subject=user.id, rol=user.rol.value)
 

@@ -19,7 +19,7 @@ from sqlalchemy import and_, exists, or_
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.ingest.horarios import NOMBRE_DIA, normalizar, normalizar_comision, normalizar_materia
+from app.ingest.horarios import NOMBRE_DIA, normalizar, separar_docentes, normalizar_comision, normalizar_materia
 from app.models.horario import HorarioClase
 from app.models.informacion import EstadoInformacionEnum as E, Evidencia, Informacion
 from app.models.ingesta import Documento, Fuente
@@ -186,8 +186,13 @@ def _materias_de(db: Session, pregunta: str) -> list[str]:
 
 def _personas(docente: str) -> list[str]:
     """'Vicente Francisco - Chibilisco Vicente' → dos personas (normalizadas)."""
-    partes = re.split(r"\s+-\s+|,\s*|\s+y\s+", normalizar(docente))
-    return [limpia for p in partes if (limpia := p.strip(" -–.,"))]
+    return [normalizar(p).replace(",", "") for p in separar_docentes(docente)]
+
+
+def _docentes_texto(docente: str | None) -> str:
+    """'Such Victor - Aparicio Gabriela' → 'Such Victor y Aparicio Gabriela'."""
+    personas = separar_docentes(docente)
+    return ", ".join(personas[:-1]) + " y " + personas[-1] if len(personas) > 1 else "".join(personas)
 
 
 def _docentes_de(db: Session, pregunta: str) -> list[str]:
@@ -357,7 +362,7 @@ def responder_horario(db: Session, pregunta: str, anterior: str = "", hoy: date 
         lineas.append(f"**{comision or 'Sin comisión'}** ({datos}) {cita}")
         for b in sorted(bloques, key=lambda b: (b.dia, b.inicio)):
             extra = "".join(x for x in (f" (electiva)" if b.electiva else "",
-                                        f" — {b.docente}" if b.docente else "", f" — {b.lugar}" if b.lugar else ""))
+                                        f" — {_docentes_texto(b.docente)}" if _docentes_texto(b.docente) else "", f" — {b.lugar}" if b.lugar else ""))
             materia = f" {nombre_de[b.materia_norm]}" if varias_materias else ""
             lineas.append(f"- {NOMBRE_DIA[b.dia]} {b.inicio} a {b.fin}:{materia}{extra}".replace(": —", ":").rstrip(":"))
         lineas.append("")

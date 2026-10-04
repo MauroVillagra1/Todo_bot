@@ -8,7 +8,7 @@ Convención usada en todo el proyecto:
   - *Update → campos opcionales para PATCH
 """
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, EmailStr, Field
 
@@ -51,7 +51,7 @@ class UsuarioBase(BaseModel):
 
 
 class UsuarioCreate(UsuarioBase):
-    """Datos necesarios para crear un usuario (solo ADMIN o consola)."""
+    """Datos para crear un usuario por consola (create_admin.py). Desde la app solo hay registro público."""
     email: EmailInstitucional
     rol: RolEnum = RolEnum.MIEMBRO
     password: Password
@@ -60,17 +60,20 @@ class UsuarioCreate(UsuarioBase):
 class UsuarioRead(UsuarioBase):
     """Datos que se devuelven al cliente. Nunca incluye el hash."""
     id: int
-    activo: bool
+    activo: bool  # False = suspensión permanente
+    baneado_hasta: datetime | None = None
+    motivo_ban: str | None = None
     creado_en: datetime
     actualizado_en: datetime
 
     model_config = {"from_attributes": True}
 
 
-class UsuarioUpdate(BaseModel):
-    """Todos los campos son opcionales para soportar PATCH parcial."""
-    nombre: str | None = Field(None, min_length=2, max_length=150)
-    email: EmailInstitucional | None = None
-    rol: RolEnum | None = None
-    activo: bool | None = None
-    password: Password | None = None
+class CambioRol(BaseModel):
+    """Desde la app un ADMIN solo da o quita el rango de moderador."""
+    rol: Literal[RolEnum.MIEMBRO, RolEnum.MOD]
+
+
+class Suspension(BaseModel):
+    dias: int | None = Field(None, ge=1, le=3650, description="Vacío = permanente")
+    motivo: str = Field(min_length=3, max_length=300)

@@ -1,2 +1,1 @@
-from app.schemas.usuario import UsuarioCreate, UsuarioRead, UsuarioUpdate
-from app.schemas.auth import TokenResponse, LoginRequest
+from app.schemas.usuario import CambioRol, Suspension, UsuarioCreate, UsuarioRead

@@ -87,18 +87,27 @@ export async function obtenerResumen() {
 
 // ── Usuarios (solo ADMIN) ─────────────────────────────────────────────────────
 
-export async function listarUsuarios() {
-  const { data } = await api.get('/api/v1/usuarios/?page=1&page_size=100')
-  return data.items  // [{ id, nombre, email, rol, activo, creado_en, ... }]
+export async function listarUsuarios({ q = '', rol = '' } = {}) {
+  const params = new URLSearchParams({ page: 1, page_size: 200, q })
+  if (rol) params.set('rol', rol)
+  const { data } = await api.get(`/api/v1/usuarios/?${params}`)
+  return data  // { items: [{ id, nombre, email, rol, activo, baneado_hasta, motivo_ban, ... }], total }
 }
 
-export async function crearUsuario(payload) {
-  const { data } = await api.post('/api/v1/usuarios/', payload)  // { nombre, email, rol, password }
+/** Dar o quitar el rango de moderador: rol = 'MOD' | 'MIEMBRO'. */
+export async function cambiarRol(id, rol) {
+  const { data } = await api.patch(`/api/v1/usuarios/${id}`, { rol })
   return data
 }
 
-export async function actualizarUsuario(id, cambios) {
-  const { data } = await api.patch(`/api/v1/usuarios/${id}`, cambios)  // { rol?, activo?, password?, ... }
+/** dias = null → baneo permanente. */
+export async function suspenderUsuario(id, dias, motivo) {
+  const { data } = await api.post(`/api/v1/usuarios/${id}/ban`, { dias, motivo })
+  return data
+}
+
+export async function levantarSuspension(id) {
+  const { data } = await api.delete(`/api/v1/usuarios/${id}/ban`)
   return data
 }
 

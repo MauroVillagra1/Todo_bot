@@ -4,13 +4,13 @@
  *   Fuentes   → carga manual de Instagram/WhatsApp; ADMIN además activa/desactiva y ajusta confiabilidad
  *   Sugerencias → datos propuestos por usuarios: aceptar (con correcciones) o rechazar con motivo
  *   Horarios  → solo ADMIN: grilla año → comisión → materias, editable (GrillaHorarios)
- *   Usuarios  → solo ADMIN: crear cuentas, cambiar rol, activar/desactivar, resetear contraseña
+ *   Usuarios  → solo ADMIN: listar/buscar, dar o quitar MOD, suspender (temporal o permanente)
  * La UI solo oculta lo que no corresponde: los permisos reales se validan en el backend.
  */
 import { useEffect, useState } from 'react'
 import {
-  aceptarSugerencia, actualizarFuente, actualizarUsuario, cargarPublicacionManual, crearUsuario,
-  listarFuentes, listarSugerencias, listarUsuarios, obtenerResumen, rechazarSugerencia,
+  aceptarSugerencia, actualizarFuente, cambiarRol, cargarPublicacionManual, levantarSuspension,
+  listarFuentes, listarSugerencias, listarUsuarios, obtenerResumen, rechazarSugerencia, suspenderUsuario,
 } from '../api'
 import GrillaHorarios from './GrillaHorarios'
 import { boton, campo, errorDe, fechaHora, tarjeta } from './ui'
@@ -345,19 +345,33 @@ function Sugerencias() {
 
 // ── Usuarios (ADMIN) ──────────────────────────────────────────────────────────
 
-const USUARIO_VACIO = { nombre: '', email: '', rol: 'MIEMBRO', password: '' }
+const DURACIONES = [['1', '1 día'], ['3', '3 días'], ['7', '7 días'], ['30', '30 días'], ['', 'Permanente']]
+const ROLES = { ADMIN: 'Admin', MOD: 'Moderador', MIEMBRO: 'Miembro' }
 
-function FilaUsuario({ u, yo, onCambio }) {
-  const [password, setPassword] = useState('')
-  const [mensaje, setMensaje] = useState(null)
+function estadoCuenta(u) {
+  if (!u.activo) return { texto: 'Baneado', color: 'bg-red-500/15 text-red-400' }
+  if (u.baneado_hasta && new Date(u.baneado_hasta) > new Date())
+    return { texto: `Suspendido hasta ${fechaHora(u.baneado_hasta)}`, color: 'bg-amber-500/15 text-amber-400' }
+  return { texto: 'Activo', color: 'bg-emerald-500/15 text-emerald-400' }
+}
 
-  async function guardar(cambios, ok) {
-    setMensaje(null)
+function FilaUsuario({ u, onCambio }) {
+  const [suspendiendo, setSuspendiendo] = useState(false)
+  const [dias, setDias] = useState('7')
+  const [motivo, setMotivo] = useState('')
+  const [error, setError] = useState(null)
+  const estado = estadoCuenta(u)
+  const esAdmin = u.rol === 'ADMIN'
+  const sancionado = estado.texto !== 'Activo'
+
+  async function hacer(accion) {
+    setError(null)
     try {
-      onCambio(await actualizarUsuario(u.id, cambios))
-      if (ok) setMensaje({ ok: true, texto: ok })
+      onCambio(await accion())
+      setSuspendiendo(false)
+      setMotivo('')
     } catch (err) {
-      setMensaje({ ok: false, texto: errorDe(err, 'No se pudo guardar') })
+      setError(errorDe(err, 'No se pudo guardar'))
     }
   }
 
@@ -365,84 +379,93 @@ function FilaUsuario({ u, yo, onCambio }) {
     <li className="py-3 text-sm space-y-2">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-medium text-[#f4f4f5] truncate">{u.nombre}{u.id === yo && ' (vos)'}</p>
+          <p className="font-medium text-[#f4f4f5] truncate">{u.nombre}</p>
           <p className="text-xs text-[#8b8b93] truncate">{u.email}</p>
+          {sancionado && u.motivo_ban && <p className="text-xs text-[#8b8b93] mt-0.5">Motivo: {u.motivo_ban}</p>}
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <select value={u.rol} disabled={u.id === yo} onChange={e => guardar({ rol: e.target.value })}
-                  className="bg-[#141417] border border-[#232327] text-[#f4f4f5] rounded-lg px-2 py-1 text-xs">
-            <option>MIEMBRO</option><option>MOD</option><option>ADMIN</option>
+        <div className="flex items-center gap-2 flex-shrink-0 text-xs flex-wrap justify-end">
+          <span className={`px-2 py-0.5 rounded-full ${estado.color}`}>{estado.texto}</span>
+          {esAdmin ? (
+            <span className="px-2 py-0.5 rounded-full bg-[#e8592e]/15 text-[#f2894f]">Admin</span>
+          ) : (
+            <>
+              <button onClick={() => hacer(() => cambiarRol(u.id, u.rol === 'MOD' ? 'MIEMBRO' : 'MOD'))}
+                      className={`px-2 py-1 rounded-lg border ${u.rol === 'MOD'
+                        ? 'border-sky-500/30 text-sky-400 hover:bg-sky-500/10' : 'border-[#232327] text-[#a1a1aa] hover:text-[#f4f4f5]'}`}>
+                {u.rol === 'MOD' ? 'Quitar MOD' : 'Hacer MOD'}
+              </button>
+              {sancionado ? (
+                <button onClick={() => hacer(() => levantarSuspension(u.id))}
+                        className="px-2 py-1 rounded-lg text-emerald-400 hover:bg-emerald-500/10">
+                  Levantar sanción
+                </button>
+              ) : (
+                <button onClick={() => setSuspendiendo(v => !v)} className="px-2 py-1 rounded-lg text-red-400 hover:bg-red-500/10">
+                  Suspender
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+      {suspendiendo && (
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={dias} onChange={e => setDias(e.target.value)} className={`${campo} !w-auto !py-1 text-xs`}>
+            {DURACIONES.map(([v, t]) => <option key={t} value={v}>{t}</option>)}
           </select>
-          <button disabled={u.id === yo} onClick={() => guardar({ activo: !u.activo })}
-                  className={`px-2 py-1 rounded-full text-xs ${u.activo ? 'bg-emerald-500/15 text-emerald-400' : 'bg-[#1e1e22] text-[#8b8b93]'}`}>
-            {u.activo ? 'Activo' : 'Inactivo'}
+          <input autoFocus placeholder="Motivo (lo ve la persona al entrar)" value={motivo} onChange={e => setMotivo(e.target.value)}
+                 className={`${campo} !py-1 text-xs flex-1 min-w-[180px]`} />
+          <button disabled={motivo.trim().length < 3}
+                  onClick={() => hacer(() => suspenderUsuario(u.id, dias ? Number(dias) : null, motivo))}
+                  className="text-xs text-red-400 hover:underline disabled:text-[#4b4b53] disabled:no-underline">
+            {dias ? 'Suspender' : 'Banear para siempre'}
           </button>
         </div>
-      </div>
-      <div className="flex items-center gap-2">
-        <input type="password" placeholder="Nueva contraseña (mín. 8, con un número)" value={password}
-               onChange={e => setPassword(e.target.value)} className={`${campo} !py-1 text-xs`} />
-        <button disabled={password.length < 8}
-                onClick={() => guardar({ password }, 'Contraseña actualizada').then(() => setPassword(''))}
-                className="text-xs text-[#f2894f] hover:underline disabled:text-[#4b4b53] disabled:no-underline whitespace-nowrap">
-          Resetear
-        </button>
-      </div>
-      {mensaje && <p className={`text-xs ${mensaje.ok ? 'text-emerald-400' : 'text-red-400'}`}>{mensaje.texto}</p>}
+      )}
+      {error && <p className="text-xs text-red-400">{error}</p>}
     </li>
   )
 }
 
-function Usuarios({ yo }) {
-  const [usuarios, setUsuarios] = useState([])
-  const [form, setForm] = useState(USUARIO_VACIO)
-  const [mensaje, setMensaje] = useState(null)
-  const cambiar = c => e => setForm(prev => ({ ...prev, [c]: e.target.value }))
-  useEffect(() => { listarUsuarios().then(setUsuarios).catch(e => setMensaje({ ok: false, texto: errorDe(e, 'No se pudieron cargar los usuarios.') })) }, [])
+function Usuarios() {
+  const [usuarios, setUsuarios] = useState(null)
+  const [q, setQ] = useState('')
+  const [rol, setRol] = useState('')
+  const [error, setError] = useState(null)
 
-  async function crear(e) {
-    e.preventDefault()
-    setMensaje(null)
-    try {
-      const nuevo = await crearUsuario(form)
-      setUsuarios(prev => [...prev, nuevo])
-      setForm(USUARIO_VACIO)
-      setMensaje({ ok: true, texto: `Cuenta creada para ${nuevo.email}` })
-    } catch (err) {
-      setMensaje({ ok: false, texto: errorDe(err, 'No se pudo crear la cuenta') })
-    }
-  }
+  useEffect(() => {
+    const t = setTimeout(() => {
+      listarUsuarios({ q, rol })
+        .then(r => setUsuarios(r.items))
+        .catch(e => setError(errorDe(e, 'No se pudieron cargar los usuarios.')))
+    }, 250)
+    return () => clearTimeout(t)
+  }, [q, rol])
 
   return (
-    <div className="space-y-6">
-      <form onSubmit={crear} className={`${tarjeta} space-y-3`}>
-        <div>
-          <h3 className="text-sm font-semibold text-[#f4f4f5]">Crear cuenta</h3>
-          <p className="text-xs text-[#8b8b93] mt-0.5">Solo correos institucionales. Pasale la contraseña a la persona por un medio seguro.</p>
-        </div>
-        <input required minLength={2} placeholder="Nombre" value={form.nombre} onChange={cambiar('nombre')} className={campo} />
-        <input required type="email" placeholder="usuario@alu.frt.utn.edu.ar o @doc.frt.utn.edu.ar" value={form.email} onChange={cambiar('email')} className={campo} />
-        <div className="flex gap-2">
-          <select value={form.rol} onChange={cambiar('rol')} className={campo}>
-            <option>MIEMBRO</option><option>MOD</option><option>ADMIN</option>
-          </select>
-          <input required minLength={8} type="password" placeholder="Contraseña inicial" value={form.password}
-                 onChange={cambiar('password')} className={campo} />
-        </div>
-        <div className="flex items-center gap-3">
-          <button type="submit" className={boton}>Crear</button>
-          {mensaje && <span className={`text-xs ${mensaje.ok ? 'text-emerald-400' : 'text-red-400'}`}>{mensaje.texto}</span>}
-        </div>
-      </form>
-
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2">
+        <input placeholder="Buscar por nombre o email…" value={q} onChange={e => setQ(e.target.value)}
+               className={`${campo} !w-auto flex-1 min-w-[200px]`} />
+        <select value={rol} onChange={e => setRol(e.target.value)} className={`${campo} !w-auto`}>
+          <option value="">Todos los roles</option>
+          {Object.entries(ROLES).map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+        </select>
+      </div>
+      {error && <p className="text-sm text-red-400">{error}</p>}
       <div className={tarjeta}>
-        <h3 className="text-sm font-semibold text-[#f4f4f5] mb-1">Usuarios ({usuarios.length})</h3>
-        <ul className="divide-y divide-[#1e1e22]">
-          {usuarios.map(u => (
-            <FilaUsuario key={u.id} u={u} yo={yo}
-                         onCambio={nuevo => setUsuarios(prev => prev.map(x => (x.id === nuevo.id ? nuevo : x)))} />
-          ))}
-        </ul>
+        <h3 className="text-sm font-semibold text-[#f4f4f5] mb-1">Usuarios {usuarios && `(${usuarios.length})`}</h3>
+        <p className="text-xs text-[#8b8b93]">
+          Las cuentas se crean con el registro (mail institucional). Las cuentas Admin no se modifican desde acá.
+        </p>
+        {!usuarios ? <p className="text-sm text-[#8b8b93] mt-3">Cargando…</p> : (
+          <ul className="divide-y divide-[#1e1e22]">
+            {usuarios.map(u => (
+              <FilaUsuario key={u.id} u={u}
+                           onCambio={nuevo => setUsuarios(prev => prev.map(x => (x.id === nuevo.id ? nuevo : x)))} />
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   )
@@ -480,7 +503,7 @@ export default function Panel({ usuario }) {
           {tab === 'fuentes' && <Fuentes esAdmin={esAdmin} />}
           {tab === 'sugerencias' && <Sugerencias />}
           {tab === 'horarios' && esAdmin && <GrillaHorarios />}
-          {tab === 'usuarios' && esAdmin && <Usuarios yo={usuario.id} />}
+          {tab === 'usuarios' && esAdmin && <Usuarios />}
         </div>
       </div>
     </div>

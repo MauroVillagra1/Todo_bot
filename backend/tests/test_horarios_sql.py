@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from app.ingest.horarios import leer_grillas, normalizar_comision, normalizar_materia
+from app.ingest.horarios import leer_grillas, normalizar_comision, normalizar_materia, separar_docentes
 from app.ingest.pipeline import guardar_grillas
 from app.models.horario import HorarioClase
 from app.models.informacion import Evidencia, Informacion
@@ -242,3 +242,26 @@ def test_conversacion_basica(mensaje, contiene):
 def test_saludo_con_pregunta_no_es_solo_conversacion():
     from app.rag.conversacion import responder_conversacion
     assert responder_conversacion("hola, ¿cuándo se dicta Redes de Datos?") is None
+
+
+@pytest.mark.parametrize("texto,esperado", [
+    ("Such Victor - Aparicio Gabriela", ["Such Victor", "Aparicio Gabriela"]),
+    ("Ugarte Fernando -  Lopez Emmanuel", ["Ugarte Fernando", "Lopez Emmanuel"]),
+    ("Valdez Ocampo T, - Bedran Marisel", ["Valdez Ocampo T", "Bedran Marisel"]),
+    ("Paredi, Mario", ["Paredi, Mario"]),  # apellido, nombre: una sola persona
+    ("Moya Susana - A designar", ["Moya Susana"]),
+    ("Ing. RUIZ 21:00 - 22:30", ["Ing. RUIZ"]),
+    ("SIN DOCENTE 18:45 - 21:00", []),
+    ("21:00 - 22:30", []),
+])
+def test_separar_docentes(texto, esperado):
+    assert separar_docentes(texto) == esperado
+
+
+def test_dos_docentes_se_muestran_y_buscan_por_separado(base):
+    r = responder(base, "¿Quién da Ingeniería y Calidad de Software en la 4K02?")
+    assert r is not None and " - " not in r["respuesta"].split("\n", 2)[2]
+    # Cada uno de los dos docentes se encuentra por su cuenta
+    for apellido in ("Chibilisco", "Vicente"):
+        r = responder(base, f"¿Qué materias da {apellido}?")
+        assert r is not None and "Ingeniería y Calidad de Software" in r["respuesta"], apellido

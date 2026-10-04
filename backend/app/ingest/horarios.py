@@ -45,6 +45,23 @@ def normalizar_materia(texto: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", normalizar(texto))).strip()
 
 
+_RE_HORAS = re.compile(r"(?<!\d)\d{1,2}[:.]\d{2}(\s*-\s*\d{1,2}[:.]\d{2})?(?!\d)")
+_SIN_DOCENTE = {"a designar", "sin docente", "a confirmar"}
+
+
+def separar_docentes(texto: str | None) -> list[str]:
+    """
+    'Such Victor - Aparicio Gabriela' → dos docentes. La coma no separa:
+    'Paredi, Mario' es una sola persona (apellido, nombre). Se descartan horas
+    que el PDF dejó pegadas ('Ing. RUIZ 21:00 - 22:30') y 'A designar'.
+    """
+    if not texto:
+        return []
+    partes = re.split(r"\s+-\s*|\s*-\s+", _RE_HORAS.sub(" ", texto))
+    limpias = [re.sub(r"\s+", " ", p).strip(" -–.,") for p in partes]
+    return [p for p in limpias if p and normalizar(p) not in _SIN_DOCENTE]
+
+
 def normalizar_comision(texto: str) -> str | None:
     """'1k1', '1K01', '1 k 01' → '1K01'."""
     m = _RE_COMISION.search(texto)
