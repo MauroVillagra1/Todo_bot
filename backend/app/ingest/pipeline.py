@@ -59,6 +59,12 @@ def guardar_publicacion(db: Session, fuente: Fuente, item: ItemCrudo) -> str:
 
 
 MAX_ORIGINAL_EN_DB = 1024 * 1024  # PDFs más grandes: queda la URL de la fuente como original
+# Una página entera por chunk (horarios: el encabezado con los días queda junto a las filas)
+MAX_CARACTERES_PAGINA = 3000
+
+
+def chunks_de_paginas(nombre: str, paginas: list[str]) -> list[str]:
+    return [trozo for pagina in paginas for trozo in dividir(nombre, pagina, MAX_CARACTERES_PAGINA)]
 
 
 def guardar_documento(db: Session, fuente: Fuente, doc: DocumentoCrudo) -> str:
@@ -89,11 +95,8 @@ def guardar_documento(db: Session, fuente: Fuente, doc: DocumentoCrudo) -> str:
     )
     db.add(documento)
     db.flush()
-    orden = 0
-    for pagina in paginas:
-        for trozo in dividir(doc.nombre, pagina):
-            db.add(Chunk(documento_id=documento.id, orden=orden, texto=trozo, hash=hash_texto(trozo)))
-            orden += 1
+    for orden, trozo in enumerate(chunks_de_paginas(doc.nombre, paginas)):
+        db.add(Chunk(documento_id=documento.id, orden=orden, texto=trozo, hash=hash_texto(trozo)))
     return ACTUALIZADO if anteriores else NUEVO
 
 

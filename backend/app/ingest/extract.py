@@ -24,15 +24,22 @@ def html_a_texto(html: str) -> str:
 
 
 def pdf_a_paginas(contenido: bytes) -> list[str]:
-    """Texto de cada página de un PDF (vacío si es escaneado: no hay OCR para mantener costo 0)."""
+    """
+    Texto de cada página de un PDF (vacío si es escaneado: no hay OCR para mantener costo 0).
+    Modo "layout": conserva las columnas, así en un horario cada materia sigue
+    alineada con su día (con la extracción simple se perdía esa relación).
+    """
     from pypdf import PdfReader
 
     lector = PdfReader(io.BytesIO(contenido))
     paginas = []
     for pagina in lector.pages:
-        texto = pagina.extract_text() or ""
-        lineas = (re.sub(r"\s+", " ", linea).strip() for linea in texto.splitlines())
-        paginas.append("\n".join(linea for linea in lineas if linea))
+        try:
+            texto = pagina.extract_text(extraction_mode="layout") or ""
+        except Exception:
+            texto = pagina.extract_text() or ""  # algunos PDFs rotos no soportan layout
+        lineas = (linea.rstrip() for linea in texto.splitlines())
+        paginas.append("\n".join(linea for linea in lineas if linea.strip()))
     return paginas
 
 

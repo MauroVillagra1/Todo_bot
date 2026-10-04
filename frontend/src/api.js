@@ -50,11 +50,33 @@ export async function cargarPublicacionManual(fuenteId, payload) {
   return data  // { resultado, publicacion_id, informacion_id, estado, tipo }
 }
 
-// ── Admin: búsqueda de usuarios ───────────────────────────────────────────────
+/** Activar/desactivar una fuente o cambiar su confiabilidad (solo ADMIN). */
+export async function actualizarFuente(fuenteId, cambios) {
+  const { data } = await api.patch(`/api/v1/fuentes/${fuenteId}`, cambios)
+  return data
+}
 
-export async function listarUsuarios(rol = null) {
-  const qs = rol ? `?rol=${rol}` : ''
-  const { data } = await api.get(`/api/v1/usuarios${qs}`)
+// ── Panel (MOD y ADMIN) ───────────────────────────────────────────────────────
+
+export async function obtenerResumen() {
+  const { data } = await api.get('/api/v1/admin/resumen')
+  return data
+}
+
+// ── Usuarios (solo ADMIN) ─────────────────────────────────────────────────────
+
+export async function listarUsuarios() {
+  const { data } = await api.get('/api/v1/usuarios/?page=1&page_size=100')
+  return data.items  // [{ id, nombre, email, rol, activo, creado_en, ... }]
+}
+
+export async function crearUsuario(payload) {
+  const { data } = await api.post('/api/v1/usuarios/', payload)  // { nombre, email, rol, password }
+  return data
+}
+
+export async function actualizarUsuario(id, cambios) {
+  const { data } = await api.patch(`/api/v1/usuarios/${id}`, cambios)  // { rol?, activo?, password?, ... }
   return data
 }
 

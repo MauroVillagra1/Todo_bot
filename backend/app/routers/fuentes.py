@@ -1,6 +1,7 @@
 """
 Router de fuentes.
   GET  /api/v1/fuentes                         → lista de fuentes (MOD y ADMIN)
+  PATCH /api/v1/fuentes/{id}                   → activar/desactivar, confiabilidad (ADMIN)
   POST /api/v1/fuentes/{id}/publicaciones      → carga manual de un posteo de
        Instagram/WhatsApp autorizado (MOD y ADMIN). Pasa por el mismo pipeline
        que la ingesta automática: hash, versionado, chunks y verificación.
@@ -14,7 +15,7 @@ from pydantic import BaseModel, Field, HttpUrl
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.dependencies import require_mod
+from app.core.dependencies import require_admin, require_mod
 from app.ingest.pipeline import DUPLICADO, guardar_publicacion
 from app.ingest.sources import TIPOS_CARGA_MANUAL, ItemCrudo
 from app.ingest.verify import procesar_pendientes
@@ -52,14 +53,37 @@ class PublicacionManualResultado(BaseModel):
 
 @router.get("/", response_model=list[FuenteRead])
 def listar_fuentes(db: Session = Depends(get_db), _mod=Depends(require_mod)):
-    return [
-        FuenteRead(
-            id=f.id, nombre=f.nombre, tipo=f.tipo.value, url=f.url,
-            confiabilidad_base=f.confiabilidad_base, activa=f.activa,
-            ultima_revision=f.ultima_revision, carga_manual=f.tipo in TIPOS_CARGA_MANUAL,
-        )
-        for f in db.query(Fuente).order_by(Fuente.id).all()
-    ]
+    return [_leer(f) for f in db.query(Fuente).order_by(Fuente.id).all()]
+
+
+class FuenteUpdate(BaseModel):
+    activa: bool | None = None
+    confiabilidad_base: int | None = Field(None, ge=0, le=100)
+
+
+def _leer(f: Fuente) -> FuenteRead:
+    return FuenteRead(
+        id=f.id, nombre=f.nombre, tipo=f.tipo.value, url=f.url,
+        confiabilidad_base=f.confiabilidad_base, activa=f.activa,
+        ultima_revision=f.ultima_revision, carga_manual=f.tipo in TIPOS_CARGA_MANUAL,
+    )
+
+
+@router.patch("/{fuente_id}", response_model=FuenteRead)
+def actualizar_fuente(
+    fuente_id: int,
+    datos: FuenteUpdate,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """Activar/desactivar una fuente o cambiar su confiabilidad. Solo ADMIN."""
+    fuente = db.get(Fuente, fuente_id)
+    if not fuente:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fuente no encontrada")
+    for campo, valor in datos.model_dump(exclude_unset=True).items():
+        setattr(fuente, campo, valor)
+    db.commit()
+    return _leer(fuente)
 
 
 @router.post("/{fuente_id}/publicaciones", response_model=PublicacionManualResultado,
