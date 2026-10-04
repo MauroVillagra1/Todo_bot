@@ -142,7 +142,10 @@ class Chunk(Base):
     # Búsqueda full-text en español, calculada por Postgres (sin LLM).
     # Al consultar, usar prefijos sobre los lexemas de la pregunta ('exam':*):
     # el stemmer reduce "examen"→"exam" pero "exámenes"→"examen", y sin prefijo no coinciden.
-    tsv = mapped_column(TSVECTOR, Computed("to_tsvector('spanish', texto)", persisted=True))
+    tsv = mapped_column(
+        TSVECTOR().with_variant(Text(), "sqlite"),  # SQLite solo en tests
+        Computed("to_tsvector('spanish', texto)", persisted=True),
+    )
     # La columna `embedding` (pgvector) se agrega en la etapa 7, solo si hace falta
 
 

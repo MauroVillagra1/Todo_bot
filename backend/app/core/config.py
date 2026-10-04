@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     # Modelos alternativos si AI_MODEL falla (en orden)
     AI_MODELOS_RESPALDO: List[str] = ["nex-agi/nex-n2.5-mini:free"]
 
+    # Clasificación con LLM solo cuando ninguna regla coincide; tope por corrida (0 = nunca)
+    CLASIFICACION_LLM_MAX_POR_CORRIDA: int = 0
+
     # ── Rate limiting ─────────────────────────────────────────────────────────
     # Mensajes por usuario por minuto (se cuenta en Postgres: funciona en serverless)
     CHAT_MAX_POR_MINUTO: int = 10

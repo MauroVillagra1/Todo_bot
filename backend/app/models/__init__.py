@@ -7,6 +7,7 @@ from app.models.auditoria import RegistroCambios
 from app.models.chat import MensajeChat
 from app.models.ingesta import Chunk, Documento, Fuente, Ingesta, Publicacion
 from app.models.metrica import MetricaDiaria
+from app.models.informacion import Evidencia, Historial, Informacion, Verificacion
 
 __all__ = [
     "Usuario",
@@ -18,4 +19,8 @@ __all__ = [
     "Chunk",
     "Ingesta",
     "MetricaDiaria",
+    "Informacion",
+    "Evidencia",
+    "Verificacion",
+    "Historial",
 ]

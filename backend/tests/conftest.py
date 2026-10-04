@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
-from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy import create_engine, event  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
@@ -32,6 +32,12 @@ def db():
     engine = create_engine(
         "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
     )
+
+    @event.listens_for(engine, "connect")
+    def _funciones_postgres(dbapi_conn, _):
+        # chunks.tsv es una columna generada con to_tsvector (Postgres)
+        dbapi_conn.create_function("to_tsvector", 2, lambda _cfg, texto: texto, deterministic=True)
+
     Usuario.__table__.create(engine)
     Session = sessionmaker(bind=engine)
     session = Session()
