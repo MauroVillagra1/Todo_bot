@@ -111,6 +111,9 @@ def armar_respuesta(texto_llm: str, resultados: list[Resultado]) -> dict:
     if SIN_EVIDENCIA.lower().rstrip(".") in texto_llm.lower():
         return {"respuesta": SIN_EVIDENCIA, "estado": "NO_CONFIRMADA", "fuentes": [], "fecha_informacion": None}
 
+    # "[1, 2]" o "[1-2]" → "[1][2]": el modelo a veces agrupa las citas
+    texto_llm = re.sub(r"\[(\d+(?:\s*[,;y-]\s*\d+)+)\]",
+                       lambda m: "".join(f"[{n}]" for n in re.findall(r"\d+", m.group(1))), texto_llm)
     citados = sorted({int(n) for n in re.findall(r"\[(\d+)\]", texto_llm)})
     validos = [n for n in citados if 1 <= n <= len(resultados)]
     # Citas a números inexistentes se borran del texto

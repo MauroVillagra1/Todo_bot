@@ -56,5 +56,19 @@ def main() -> int:
         db.close()
 
 
+def _error_visible(e: Exception) -> None:
+    """En GitHub Actions, '::error::' aparece como anotación en el resumen de la corrida."""
+    url = os.environ.get("DATABASE_URL", "")
+    detalle = str(e).replace(url, "<DATABASE_URL>")[:300] if url else str(e)[:300]
+    if not url:
+        detalle = "Falta el secret DATABASE_URL (Settings → Secrets and variables → Actions). " + detalle
+    print(f"::error::{type(e).__name__}: {detalle}".replace("
+", " "))
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except Exception as e:
+        _error_visible(e)
+        raise

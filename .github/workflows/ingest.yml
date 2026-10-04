@@ -46,6 +46,10 @@ jobs:
           ENVIRONMENT: production
           FUENTE: ${{ github.event.inputs.fuente }}
         run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Falta el secret DATABASE_URL (Settings → Secrets and variables → Actions)"
+            exit 1
+          fi
           if [ -n "$FUENTE" ]; then
             python scripts/run_ingest.py --fuente "$FUENTE"
           else

@@ -182,3 +182,13 @@ def test_la_ia_recibe_la_fecha_de_hoy_para_resolver_proximo(client, crear_usuari
     _preguntar(client, crear_usuario("u@alu.frt.utn.edu.ar"), "¿Cuándo es la próxima mesa?")
 
     assert "FECHA DE HOY: 03/10/2026" in llamadas["llm"][-1][0]["content"]  # hora de Argentina
+
+
+def test_citas_agrupadas_se_reconocen():
+    from datetime import datetime
+    from app.rag.answer import armar_respuesta
+    from app.rag.search import Resultado
+    rs = [Resultado(i, i, f"t{i}", "x", "https://x", "F", datetime(2026, 1, 1), "CONFIRMADA", 1.0) for i in (1, 2, 3)]
+    r = armar_respuesta("Es una competencia [1, 2].", rs)
+    assert r["respuesta"] == "Es una competencia [1][2]."
+    assert [f["numero"] for f in r["fuentes"]] == [1, 2] and r["estado"] == "CONFIRMADA"
