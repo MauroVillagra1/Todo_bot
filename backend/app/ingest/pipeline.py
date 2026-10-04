@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.ingest.chunk import dividir
 from app.ingest.extract import hash_bytes, hash_texto, html_a_texto, pdf_a_paginas
 from app.ingest.horarios import Grilla, leer_grillas, normalizar_materia
+from app.ingest.limpieza_horarios import limpiar_materia
 from app.models.horario import HorarioClase
 from app.ingest.sources import DocumentoCrudo, ItemCrudo, Source, obtener_adaptador
 from app.models.ingesta import (
@@ -92,13 +93,15 @@ def guardar_grillas(db: Session, documento_id: int, grillas: list[Grilla]) -> No
     db.query(HorarioClase).filter(HorarioClase.documento_id == documento_id).delete()
     for g in grillas:
         for b in g.bloques:
-            if not b.materia:
+            limpio = limpiar_materia(b.materia, b.docente) if b.materia else None
+            if not limpio:
                 continue
+            materia, docente = limpio
             db.add(HorarioClase(
                 documento_id=documento_id, comision=g.comision, anio=g.anio, plan=g.plan,
                 turno=g.turno, periodo=g.periodo, aula=g.aula, dia=b.dia, inicio=b.inicio, fin=b.fin,
-                materia=b.materia[:200], materia_norm=normalizar_materia(b.materia)[:200],
-                docente=b.docente[:200] or None, lugar=b.lugar[:60] or None, electiva=b.electiva,
+                materia=materia[:200], materia_norm=normalizar_materia(materia)[:200],
+                docente=docente, lugar=b.lugar[:60] or None, electiva=b.electiva,
             ))
 
 

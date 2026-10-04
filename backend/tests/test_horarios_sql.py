@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from app.ingest.horarios import leer_grillas, normalizar_comision, normalizar_materia, separar_docentes
+from app.ingest.limpieza_horarios import limpiar_docente, limpiar_materia
 from app.ingest.pipeline import guardar_grillas
 from app.models.horario import HorarioClase
 from app.models.informacion import Evidencia, Informacion
@@ -107,7 +108,7 @@ def test_abreviaturas_y_docente(base):
 
 def test_electivas_por_turno(base):
     r = responder(base, "¿Qué electivas hay a la noche?")
-    assert "Fundamentos de ingenieria de datos" in r["respuesta"]
+    assert "Fundamentos de Ingeniería de Datos" in r["respuesta"]
 
 
 def test_seguimiento_usa_la_comision_anterior(base):
@@ -182,6 +183,15 @@ def test_cuatrimestre_terminado_no_se_muestra(base):
     # …salvo que se lo pida explícitamente
     r = responder(base, "¿Qué tiene la 4K01 los lunes en el segundo cuatrimestre?", hoy=date(2026, 5, 4))
     assert "Redes de Datos" in r["respuesta"]
+
+
+def test_por_docente_se_muestran_todos_los_cuatrimestres(base):
+    mayo = date(2026, 5, 4)  # el fixture es del segundo cuatrimestre, que en mayo no está en curso
+    r = responder(base, "¿Qué materias da Moyano?", hoy=mayo)
+    assert r is not None and "Redes de Datos" in r["respuesta"]
+    # Si se pide un cuatrimestre, solo ese
+    assert responder(base, "¿Qué materias da Moyano en el primer cuatrimestre?", hoy=mayo) is None
+    assert "Redes de Datos" in responder(base, "¿Qué materias da Moyano en el 2do cuatrimestre?", hoy=mayo)["respuesta"]
 
 
 def test_horario_desactualizado_no_se_usa(base):
@@ -265,3 +275,40 @@ def test_dos_docentes_se_muestran_y_buscan_por_separado(base):
     for apellido in ("Chibilisco", "Vicente"):
         r = responder(base, f"¿Qué materias da {apellido}?")
         assert r is not None and "Ingeniería y Calidad de Software" in r["respuesta"], apellido
+
+
+# ── Limpieza de nombres ───────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("texto,esperado", [
+    ("Vivente Francisco - Chibilisco Vicente", "Vicente Francisco - Chibilisco Vicente"),
+    ("Paredi, Mario", "Paredi Mario"),
+    ("Hadad Salomon R. - De Luca Alejandra", "Hadad Salomon Rosana - De Luca Alejandra"),
+    ("Rojas Cristina Dorigatti Mariana", "Rojas Cristina - Dorigatti Mariana"),
+    ("Will Adrian Lizondo Diego / Jimenez Victor", "Will Adrian - Lizondo Diego - Jimenez Victor"),
+    ("Ing. MARTÍNEZ Ing. CARO", "Martinez Ariel - Caro"),
+    ("Ing. SUELDO 20:15 - 22:30", "Sueldo"),  # Adrian o Adriana: no se adivina
+    ("IngGONZÁLEZ QUINTEROS 18:00 -19:30", "González Quinteros Juan P"),
+    ("Zakour José (Lab . 156)", "Zakhour José"),
+    ("Arias Jorge Lab . 154", "Arias Jorge"),
+    ("SINDOCENTE", None),
+    ("A designar Jub. Torres", None),
+])
+def test_limpiar_docente(texto, esperado):
+    assert limpiar_docente(texto) == esperado
+
+
+@pytest.mark.parametrize("materia,docente,esperado", [
+    ("Parad. De Programacion", None, ("Paradigmas de Programación", None)),
+    ("Comunicaciones - (aux. Elías, Roberto)", None, ("Comunicaciones", "Elías Roberto")),
+    ("Gestión de Datos - ( prof Such)", "Such Victor", ("Gestión de Datos", "Such Victor")),
+    ("Matemática Superior (Pro. Cantó, Javier)", None, ("Matemática Superior", "Cantó Javier")),
+    ("II Sistemas Operativos - Ing. Gonzalez Quinteros", None, ("Sistemas Operativos", "González Quinteros Juan P")),
+    ("Bases de Datos *", None, ("Bases de Datos", None)),
+    ("PROGRAMACION DE APLICACIONES VISUALES (Prof. vicente )", None,
+     ("Programación de Aplicaciones Visuales", "Vicente Francisco")),
+    ("Ing. Del Requerimiento", None, ("Ingeniería del Requerimiento", None)),
+    ("*** cambuia de", None, None),
+    ("Redes de Datos", "Moyano Alberto", ("Redes de Datos", "Moyano Alberto")),
+])
+def test_limpiar_materia(materia, docente, esperado):
+    assert limpiar_materia(materia, docente) == esperado

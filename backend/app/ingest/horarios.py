@@ -46,7 +46,7 @@ def normalizar_materia(texto: str) -> str:
 
 
 _RE_HORAS = re.compile(r"(?<!\d)\d{1,2}[:.]\d{2}(\s*-\s*\d{1,2}[:.]\d{2})?(?!\d)")
-_SIN_DOCENTE = {"a designar", "sin docente", "a confirmar"}
+_SIN_DOCENTE = ("a designar", "a confirmar", "sin docente", "sindocente")  # "A designar Jub. Torres"
 
 
 def separar_docentes(texto: str | None) -> list[str]:
@@ -59,7 +59,7 @@ def separar_docentes(texto: str | None) -> list[str]:
         return []
     partes = re.split(r"\s+-\s*|\s*-\s+", _RE_HORAS.sub(" ", texto))
     limpias = [re.sub(r"\s+", " ", p).strip(" -–.,") for p in partes]
-    return [p for p in limpias if p and normalizar(p) not in _SIN_DOCENTE]
+    return [p for p in limpias if p and not normalizar(p).startswith(_SIN_DOCENTE)]
 
 
 def normalizar_comision(texto: str) -> str | None:

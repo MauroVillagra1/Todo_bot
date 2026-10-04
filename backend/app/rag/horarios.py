@@ -300,10 +300,11 @@ def responder_horario(db: Session, pregunta: str, anterior: str = "", hoy: date 
         filas = [(h, d) for h, d in filas if h.turno and f["turno"] in h.turno.lower()]
     if docentes:
         filas = [(h, d) for h, d in filas if h.docente and set(_personas(h.docente)) & set(docentes)]
-    # Cuatrimestre: el pedido, o si no se pide, se ocultan los horarios del que no está en curso
+    # Cuatrimestre: el pedido, o si no se pide, se ocultan los horarios del que no está en curso.
+    # Por docente se muestra todo el año ("¿qué materias da Paredi?" incluye el 1er cuatrimestre).
     if f["periodo"]:
         filas = [(h, d) for h, d in filas if h.periodo in (f["periodo"], "Anual", None)]
-    else:
+    elif not docentes:
         filas = [(h, d) for h, d in filas if h.periodo != cuatrimestre_terminado(hoy)]
     if not filas:
         return None

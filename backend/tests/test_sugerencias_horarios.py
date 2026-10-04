@@ -4,6 +4,7 @@ from datetime import date
 import pytest
 
 from app.models.auditoria import RegistroCambios
+from app.models.cache import CacheRespuesta
 from app.models.horario import HorarioClase
 from app.models.informacion import Evidencia, Historial, Informacion, Verificacion
 from app.models.ingesta import Chunk, Documento, Fuente, Ingesta, Publicacion
@@ -18,7 +19,7 @@ from conftest import auth
 def tablas(db):
     engine = db.get_bind()
     for m in (Fuente, Documento, Publicacion, Chunk, Ingesta, MetricaDiaria, Informacion, Evidencia,
-              Verificacion, Historial, HorarioClase, Sugerencia, RegistroCambios):
+              Verificacion, Historial, HorarioClase, Sugerencia, RegistroCambios, CacheRespuesta):
         m.__table__.create(engine)
     return db
 
@@ -116,3 +117,13 @@ def test_chat_responde_con_bloque_manual(client, tablas, crear_usuario):
     r = responder_horario(tablas, "¿Qué tiene la 1K01 los lunes?", hoy=date(2026, 10, 4))
     assert "Pérez Ana" in r["respuesta"] and "[1]" in r["respuesta"]
     assert r["fuentes"][0]["titulo"] == "Horarios cargados por la administración"
+
+
+def test_editar_horario_vacia_la_cache_del_chat(client, tablas, crear_usuario):
+    from datetime import datetime, timedelta, timezone
+    admin = crear_usuario("admin@doc.frt.utn.edu.ar", RolEnum.ADMIN)
+    tablas.add(CacheRespuesta(clave="x" * 64, respuesta={"respuesta": "vieja"},
+                              expira_en=datetime.now(timezone.utc) + timedelta(hours=1)))
+    tablas.commit()
+    client.post("/api/v1/horarios/", json=BLOQUE, headers=auth(admin))
+    assert tablas.query(CacheRespuesta).count() == 0

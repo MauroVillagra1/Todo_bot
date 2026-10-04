@@ -16,6 +16,7 @@ from app.core.database import get_db
 from app.core.dependencies import require_admin
 from app.ingest.horarios import normalizar_comision, normalizar_materia
 from app.models.auditoria import RegistroCambios
+from app.models.cache import CacheRespuesta
 from app.models.horario import HorarioClase
 from app.models.ingesta import Documento
 from app.rag.horarios import mas_recientes, vigentes
@@ -113,6 +114,8 @@ def _validar_horas(h: HorarioClase) -> None:
 
 
 def _auditar(db: Session, h: HorarioClase, accion: str, antes: dict | None, despues: dict | None, admin) -> None:
+    # La clave de la caché del chat no incluye los horarios: se vacía para que el cambio se vea ya
+    db.query(CacheRespuesta).delete()
     db.add(RegistroCambios(tabla_afectada="horarios_clases", registro_id=h.id, valor_anterior=antes,
                            valor_nuevo=despues, accion=accion, usuario_id=admin.id))
 
