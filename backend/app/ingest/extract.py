@@ -3,9 +3,13 @@ Extracción de texto con herramientas locales (PRO-01). Sin LLM.
 """
 import hashlib
 import io
+import logging
 import re
 
 from bs4 import BeautifulSoup
+
+# pypdf avisa por cada PDF mal armado ("Multiple definitions…"); no son errores
+logging.getLogger("pypdf").setLevel(logging.ERROR)
 
 _ETIQUETAS_RUIDO = ["script", "style", "noscript", "iframe", "svg", "form", "button"]
 

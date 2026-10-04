@@ -36,6 +36,9 @@ def completar(mensajes: list[dict], max_tokens: int = 500) -> str:
                 "messages": mensajes,
                 "temperature": 0.3,
                 "max_tokens": max_tokens,
+                # Los modelos "de razonamiento" (ej. qwen3) gastan los tokens pensando
+                # y devuelven content vacío; además razonar no aporta en RAG y cuesta más
+                "reasoning": {"enabled": False},
             }
             # Timeout corto: si hay que probar varios modelos no se pasa del límite de Vercel
             with httpx.Client(timeout=20) as client:
@@ -44,9 +47,10 @@ def completar(mensajes: list[dict], max_tokens: int = 500) -> str:
                 # El cuerpo dice por qué (key inválida, modelo inexistente, límite…)
                 raise ValueError(f"HTTP {resp.status_code}: {resp.text[:200]}")
             data = resp.json()
-            if not data.get("choices"):
-                raise ValueError(f"sin respuesta: {str(data)[:200]}")
-            return data["choices"][0]["message"]["content"].strip()
+            contenido = ((data.get("choices") or [{}])[0].get("message") or {}).get("content")
+            if not contenido:
+                raise ValueError(f"respuesta vacía: {str(data)[:200]}")
+            return contenido.strip()
         except Exception as e:
             errores.append(f"{modelo} → {e}")
 
