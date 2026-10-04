@@ -9,7 +9,7 @@ Este documento explica cómo el sistema se entera de que una fuente publicó o c
 Dos veces por día, un proceso automático (el **worker**) le pregunta a cada fuente activa *"¿qué cambió desde la última vez?"*. Guarda solo lo nuevo y nunca borra lo anterior.
 
 ```
-GitHub Actions (06:00 y 18:00)
+GitHub Actions (cada 6 horas: 00, 06, 12 y 18)
         │
         ▼
 scripts/run_ingest.py ──► para cada fuente activa:
