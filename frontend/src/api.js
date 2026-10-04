@@ -37,6 +37,19 @@ export async function enviarMensaje(mensaje, conversacion_id = null) {
   return data  // { respuesta, conversacion_id, fuentes }
 }
 
+// ── Fuentes (MOD y ADMIN) ─────────────────────────────────────────────────────
+
+export async function listarFuentes() {
+  const { data } = await api.get('/api/v1/fuentes/')
+  return data  // [{ id, nombre, tipo, url, confiabilidad_base, activa, ultima_revision, carga_manual }]
+}
+
+/** Carga a mano un posteo autorizado de Instagram o de un canal de WhatsApp. */
+export async function cargarPublicacionManual(fuenteId, payload) {
+  const { data } = await api.post(`/api/v1/fuentes/${fuenteId}/publicaciones`, payload)
+  return data  // { resultado, publicacion_id, informacion_id, estado, tipo }
+}
+
 // ── Admin: búsqueda de usuarios ───────────────────────────────────────────────
 
 export async function listarUsuarios(rol = null) {

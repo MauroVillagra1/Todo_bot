@@ -2,6 +2,7 @@
 Extracción de texto con herramientas locales (PRO-01). Sin LLM.
 """
 import hashlib
+import io
 import re
 
 from bs4 import BeautifulSoup
@@ -16,6 +17,23 @@ def html_a_texto(html: str) -> str:
         etiqueta.decompose()
     lineas = (re.sub(r"\s+", " ", linea).strip() for linea in sopa.get_text("\n").splitlines())
     return "\n".join(linea for linea in lineas if linea)
+
+
+def pdf_a_paginas(contenido: bytes) -> list[str]:
+    """Texto de cada página de un PDF (vacío si es escaneado: no hay OCR para mantener costo 0)."""
+    from pypdf import PdfReader
+
+    lector = PdfReader(io.BytesIO(contenido))
+    paginas = []
+    for pagina in lector.pages:
+        texto = pagina.extract_text() or ""
+        lineas = (re.sub(r"\s+", " ", linea).strip() for linea in texto.splitlines())
+        paginas.append("\n".join(linea for linea in lineas if linea))
+    return paginas
+
+
+def hash_bytes(contenido: bytes) -> str:
+    return hashlib.sha256(contenido).hexdigest()
 
 
 def hash_texto(texto: str) -> str:

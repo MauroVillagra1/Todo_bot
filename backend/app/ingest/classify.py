@@ -111,9 +111,15 @@ def extraer_fechas(texto: str, referencia: date) -> tuple[date | None, date | No
     return (validas[0], validas[-1]) if validas else (None, None)
 
 
-def anio_mencionado(titulo: str) -> int | None:
-    """Año más reciente nombrado en el título ("Calendario Académico 2025" → 2025)."""
-    anios = [int(a) for a in _RE_ANIO.findall(titulo)]
+_RE_PLAN = re.compile(r"\bplan(?:\s+de\s+estudios?)?\s+20\d{2}\b")
+
+
+def anio_mencionado(texto: str) -> int | None:
+    """
+    Año más reciente nombrado ("Calendario Académico 2025" → 2025).
+    Ignora "Plan 2023": es el plan de estudios, no el período al que se refiere.
+    """
+    anios = [int(a) for a in _RE_ANIO.findall(_RE_PLAN.sub(" ", normalizar(texto)))]
     return max(anios) if anios else None
 
 

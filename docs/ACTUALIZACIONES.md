@@ -148,6 +148,39 @@ Sin ese secret, el workflow falla.
 
 ---
 
+## PDFs de Sistemas FRT (horarios, calendarios, resoluciones)
+
+La fuente **Sistemas FRT (PDFs)** lee la biblioteca de medios de WordPress:
+```
+https://sistemasfrtutn.ar/wp-json/wp/v2/media?mime_type=application/pdf&modified_after=<ultima_revision>
+```
+- Usa el mismo mecanismo que los posts: solo pide lo nuevo, descarga el PDF y extrae el texto con `pypdf`, todo en local y sin costo.
+- Hace **un chunk por página**. En los horarios cada página es una comisión, así que una pregunta como "¿horario de 3K01?" encuentra la página justa.
+- **Se excluyen los CVs de docentes** (`CV_…`, `…-CV-…`, `Curriculum…`): son datos personales y no le sirven al chat. El patrón está en `fuentes.config.excluir_pdf`.
+- Si un PDF se vuelve a subir con el mismo contenido, se descarta por hash. Si cambia, se guarda una versión nueva.
+- El original se guarda comprimido si pesa hasta 1 MB. Si es más grande, queda la URL de la fuente.
+- Limitación: los PDFs **escaneados** (imágenes) no tienen texto, y leerlos requeriría OCR.
+
+## Instagram y canales de WhatsApp (autorizados)
+
+| Fuente | Cómo entra el contenido |
+|---|---|
+| **WhatsApp** | No existe una API para leer canales. Un **MOD** carga el posteo desde el **Panel → Cargar publicación**: link, título, texto y fecha. |
+| **Instagram** | Igual que WhatsApp (carga manual), **o** automático con la API oficial de Meta si el dueño de la cuenta genera un token. |
+
+Lo cargado a mano pasa por el **mismo circuito** que lo automático: hash, versionado si se vuelve a cargar el mismo link con otro texto, chunks y verificación. El estado depende de la confiabilidad de la fuente: 100% → CONFIRMADA, 90% → PROBABLE, 50% → NO_CONFIRMADA.
+
+### Activar Instagram automático (opcional, costo 0)
+
+1. El dueño de la cuenta (que debe ser **profesional**, Business o Creator) autoriza una app de Meta y genera un **token de larga duración**.
+2. El token se guarda como **secret** de GitHub, por ejemplo `IG_TOKEN_SAE_FRT`, y se agrega al `env:` del workflow `ingest.yml`.
+3. En la fuente se indica el nombre de esa variable:
+   ```sql
+   UPDATE fuentes SET config = '{"token_env": "IG_TOKEN_SAE_FRT"}' WHERE nombre = 'SAE FRT (Instagram)';
+   ```
+- El token **dura unos 60 días** y hay que renovarlo.
+- Se lee el texto del posteo (caption). El texto que está **dentro de las imágenes** (flyers) no se lee.
+
 ## Activar o desactivar fuentes
 
 Por ahora se hace por SQL; el panel de la etapa 8 lo va a permitir desde la web:
@@ -163,5 +196,5 @@ Una fuente inactiva no se consulta, así que no tiene ningún costo.
 - **Borrados:** si la fuente **elimina** un post, `modified_after` no lo informa, y el post queda guardado como vigente. Más adelante se puede sumar una revisión periódica que compare la lista completa de IDs.
 - **Eventos de Sistemas FRT** (`tp_event`): no están expuestos en la API pública, así que por ahora no se leen.
 - **UTN FRT (`frt.utn.edu.ar`):** el sitio está caído, así que su adaptador web se construye cuando vuelva (etapa 4).
-- **Primera carga:** baja todo el historial (~589 publicaciones) y tarda bastante. Las corridas siguientes solo traen lo modificado.
+- **Primera carga:** baja todo el historial (~589 publicaciones y ~120 PDFs) y tarda bastante. Las corridas siguientes solo traen lo modificado.
 - **Clasificación y verificación** (estados CONFIRMADA, PROBABLE, etc.): llegan en la etapa 5. Por ahora solo se guarda el contenido.

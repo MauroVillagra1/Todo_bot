@@ -5,15 +5,18 @@ Clasificación (etapa 5) y embeddings (etapa 7) se suman después.
 Garantía clave: re-ejecutar sin cambios en la fuente no crea nada nuevo,
 no llama al LLM y no genera embeddings.
 """
+import gzip
 from datetime import timedelta, timezone
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.ingest.chunk import dividir
-from app.ingest.extract import hash_texto, html_a_texto
-from app.ingest.sources import ItemCrudo, Source, obtener_adaptador
-from app.models.ingesta import Chunk, EstadoIngestaEnum, Fuente, Ingesta, Publicacion
+from app.ingest.extract import hash_bytes, hash_texto, html_a_texto, pdf_a_paginas
+from app.ingest.sources import DocumentoCrudo, ItemCrudo, Source, obtener_adaptador
+from app.models.ingesta import (
+    Chunk, Documento, EstadoIngestaEnum, Fuente, Ingesta, Publicacion, TipoDocumentoEnum,
+)
 from app.services.metricas import incrementar
 
 # Se vuelve a pedir un poco antes de la última revisión por si algo se
@@ -55,6 +58,45 @@ def guardar_publicacion(db: Session, fuente: Fuente, item: ItemCrudo) -> str:
     return ACTUALIZADO if anteriores else NUEVO
 
 
+MAX_ORIGINAL_EN_DB = 1024 * 1024  # PDFs más grandes: queda la URL de la fuente como original
+
+
+def guardar_documento(db: Session, fuente: Fuente, doc: DocumentoCrudo) -> str:
+    """Igual que guardar_publicacion, para archivos (PDF). Un chunk por página."""
+    paginas = pdf_a_paginas(doc.contenido)
+    texto = "\n\n".join(p for p in paginas if p)
+    # PDF sin texto (escaneado): el hash del archivo evita reprocesarlo
+    h = hash_texto(f"{doc.nombre}\n{texto}") if texto else hash_bytes(doc.contenido)
+
+    if db.query(Documento).filter(Documento.hash == h).first():
+        return DUPLICADO
+
+    anteriores = db.query(Documento).filter(
+        Documento.fuente_id == fuente.id, Documento.url == doc.url, Documento.vigente.is_(True)
+    ).all()
+    for anterior in anteriores:
+        anterior.vigente = False
+
+    documento = Documento(
+        fuente_id=fuente.id,
+        url=doc.url,
+        nombre=doc.nombre[:500],
+        tipo=TipoDocumentoEnum.PDF,
+        contenido_original=gzip.compress(doc.contenido) if len(doc.contenido) <= MAX_ORIGINAL_EN_DB else None,
+        texto_extraido=texto,
+        hash=h,
+        fecha_publicacion=doc.fecha_publicacion,
+    )
+    db.add(documento)
+    db.flush()
+    orden = 0
+    for pagina in paginas:
+        for trozo in dividir(doc.nombre, pagina):
+            db.add(Chunk(documento_id=documento.id, orden=orden, texto=trozo, hash=hash_texto(trozo)))
+            orden += 1
+    return ACTUALIZADO if anteriores else NUEVO
+
+
 def procesar_fuente(db: Session, fuente: Fuente, adaptador: Source | None = None) -> Ingesta:
     adaptador = adaptador or obtener_adaptador(fuente)
     ingesta = Ingesta(fuente_id=fuente.id, detalle_errores=[])
@@ -70,14 +112,21 @@ def procesar_fuente(db: Session, fuente: Fuente, adaptador: Source | None = None
     nuevos = actualizados = duplicados = 0
     estado = EstadoIngestaEnum.OK
 
-    try:
+    # Publicaciones y archivos pasan por el mismo circuito de guardado
+    def elementos():
         for item in adaptador.obtener_cambios(desde):
+            yield item.id_externo, item, guardar_publicacion
+        for doc in adaptador.obtener_documentos(desde):
+            yield doc.url, doc, guardar_documento
+
+    try:
+        for clave, item, guardar in elementos():
             try:
-                resultado = guardar_publicacion(db, fuente, item)
+                resultado = guardar(db, fuente, item)
                 db.commit()  # por ítem: si el proceso muere, lo ya guardado queda
             except Exception as e:
                 db.rollback()
-                errores.append({"item": item.id_externo, "error": str(e)[:300]})
+                errores.append({"item": clave, "error": str(e)[:300]})
                 continue
 
             if resultado == DUPLICADO:

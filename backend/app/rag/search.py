@@ -22,8 +22,10 @@ WITH q AS (
     SELECT to_tsquery('spanish', string_agg(quote_literal(lexeme) || ':*', ' | ')) AS tsq
     FROM unnest(to_tsvector('spanish', :pregunta))
 )
-SELECT c.id AS chunk_id, i.id AS informacion_id, p.titulo, c.texto, p.url,
-       f.nombre AS fuente, coalesce(p.fecha_modificacion, p.fecha_publicacion) AS fecha,
+SELECT c.id AS chunk_id, i.id AS informacion_id,
+       coalesce(p.titulo, d.nombre) AS titulo, c.texto, coalesce(p.url, d.url) AS url,
+       f.nombre AS fuente,
+       coalesce(p.fecha_modificacion, p.fecha_publicacion, d.fecha_publicacion, d.fecha_captura) AS fecha,
        i.estado::text AS estado, i.tipo::text AS tipo,
        ts_rank(c.tsv, q.tsq)
          * CASE i.estado::text
@@ -32,11 +34,13 @@ SELECT c.id AS chunk_id, i.id AS informacion_id, p.titulo, c.texto, p.url,
          * CASE WHEN i.tipo::text = :tipo THEN 1.5 ELSE 1.0 END AS puntaje
 FROM q
 JOIN chunks c ON c.tsv @@ q.tsq
-JOIN publicaciones p ON p.id = c.publicacion_id AND p.vigente
-JOIN evidencias e ON e.publicacion_id = p.id
+-- Un chunk viene de una publicación (post/página) o de un documento (PDF)
+LEFT JOIN publicaciones p ON p.id = c.publicacion_id
+LEFT JOIN documentos d ON d.id = c.documento_id
+JOIN evidencias e ON e.publicacion_id = p.id OR e.documento_id = d.id
 JOIN informaciones i ON i.id = e.informacion_id AND i.estado::text NOT IN ('REEMPLAZADA')
-JOIN fuentes f ON f.id = p.fuente_id
-WHERE q.tsq IS NOT NULL
+JOIN fuentes f ON f.id = coalesce(p.fuente_id, d.fuente_id)
+WHERE q.tsq IS NOT NULL AND coalesce(p.vigente, d.vigente)
 ORDER BY puntaje DESC, fecha DESC NULLS LAST
 LIMIT :limite
 """)

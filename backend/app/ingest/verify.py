@@ -9,9 +9,10 @@ Vigencia (fecha_fin):
   1. La fecha más tardía mencionada en el texto, si hay.
   2. Si el título nombra un año anterior al de publicación ("Calendario 2025"
      publicado en 2026), el 31/12 de ese año.
-  3. Si no, posts: 1 año desde la publicación. Páginas institucionales: sin vencimiento.
+  3. Si no, posts y archivos: 1 año desde la publicación. Páginas institucionales: sin vencimiento.
 """
-from datetime import date, timedelta
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -23,7 +24,7 @@ from app.models.informacion import (
     EstadoInformacionEnum as E, Evidencia, Historial, Informacion, TipoInformacionEnum,
     Verificacion,
 )
-from app.models.ingesta import Fuente, Publicacion
+from app.models.ingesta import Documento, Fuente, Publicacion
 from app.services.metricas import incrementar
 
 VIGENCIA_SIN_FECHA = timedelta(days=365)
@@ -45,9 +46,10 @@ def calcular_vigencia(
     inicio, fin = extraer_fechas(f"{titulo}\n{texto}", publicada)
     if fin:
         return inicio, fin, f"vigente hasta {fin:%d/%m/%Y} según las fechas del texto"
-    anio = anio_mencionado(titulo)
+    # El encabezado del texto también cuenta: un PDF "1-ANO-2023" dice "HORARIOS 2026"
+    anio = anio_mencionado(f"{titulo}\n{texto[:200]}")
     if anio and anio < publicada.year:
-        return None, date(anio, 12, 31), f"el título se refiere al año {anio}"
+        return None, date(anio, 12, 31), f"se refiere al año {anio}"
     if es_pagina:
         return None, None, "página institucional sin vencimiento"
     return None, publicada + VIGENCIA_SIN_FECHA, "sin fechas en el texto: se asume 1 año desde la publicación"
@@ -65,43 +67,96 @@ def _clasificar_con_llm(titulo: str, texto: str) -> TipoInformacionEnum | None:
     return TipoInformacionEnum(respuesta) if respuesta in TIPOS_VALIDOS else None
 
 
-def procesar_pendientes(db: Session, hoy: date | None = None) -> dict:
-    """
-    Crea o actualiza la INFORMACION de cada publicación vigente que todavía no
-    tiene evidencia (nuevas o versiones nuevas). Idempotente: lo ya procesado
-    no se vuelve a tocar.
-    """
-    hoy = hoy or date.today()
-    llm_restantes = get_settings().CLASIFICACION_LLM_MAX_POR_CORRIDA
-    resumen = {"creadas": 0, "actualizadas": 0, "llamadas_llm": 0}
+@dataclass
+class _Origen:
+    """Publicación o documento pendiente, con lo que hace falta para verificarlo."""
+    fuente_id: int
+    titulo: str
+    texto: str
+    publicada: date
+    es_pagina: bool
+    evidencia: dict           # {"publicacion_id": …} o {"documento_id": …}
+    version_anterior: object  # query de la INFORMACION de versiones anteriores
 
-    pendientes = (
+
+def _pendientes(db: Session) -> list[_Origen]:
+    """Publicaciones y documentos vigentes que todavía no tienen evidencia."""
+    origenes: list[_Origen] = []
+
+    pubs = (
         db.query(Publicacion)
         .outerjoin(Evidencia, Evidencia.publicacion_id == Publicacion.id)
         .filter(Publicacion.vigente.is_(True), Evidencia.id.is_(None))
         .order_by(Publicacion.id)
         .all()
     )
+    for p in pubs:
+        anterior = (
+            db.query(Informacion)
+            .join(Evidencia, Evidencia.informacion_id == Informacion.id)
+            .join(Publicacion, Publicacion.id == Evidencia.publicacion_id)
+            .filter(Publicacion.fuente_id == p.fuente_id, Publicacion.id_externo == p.id_externo,
+                    Publicacion.id != p.id)
+        )
+        origenes.append(_Origen(
+            fuente_id=p.fuente_id,
+            titulo=p.titulo or "(sin título)",
+            texto=html_a_texto(p.contenido_original) or p.titulo or "",
+            publicada=(p.fecha_publicacion or p.fecha_captura).date(),
+            es_pagina=p.id_externo.startswith("pages:"),
+            evidencia={"publicacion_id": p.id},
+            version_anterior=anterior,
+        ))
+
+    docs = (
+        db.query(Documento)
+        .outerjoin(Evidencia, Evidencia.documento_id == Documento.id)
+        .filter(Documento.vigente.is_(True), Evidencia.id.is_(None))
+        .order_by(Documento.id)
+        .all()
+    )
+    for d in docs:
+        anterior = (
+            db.query(Informacion)
+            .join(Evidencia, Evidencia.informacion_id == Informacion.id)
+            .join(Documento, Documento.id == Evidencia.documento_id)
+            .filter(Documento.fuente_id == d.fuente_id, Documento.url == d.url, Documento.id != d.id)
+        )
+        origenes.append(_Origen(
+            fuente_id=d.fuente_id,
+            titulo=d.nombre or d.url.rsplit("/", 1)[-1],
+            texto=d.texto_extraido or d.nombre or "",
+            publicada=(d.fecha_publicacion or d.fecha_captura).date(),
+            es_pagina=False,
+            evidencia={"documento_id": d.id},
+            version_anterior=anterior,
+        ))
+    return origenes
+
+
+def procesar_pendientes(db: Session, hoy: date | None = None) -> dict:
+    """
+    Crea o actualiza la INFORMACION de cada publicación o documento vigente que
+    todavía no tiene evidencia (nuevos o versiones nuevas). Idempotente: lo ya
+    procesado no se vuelve a tocar.
+    """
+    hoy = hoy or date.today()
+    llm_restantes = get_settings().CLASIFICACION_LLM_MAX_POR_CORRIDA
+    resumen = {"creadas": 0, "actualizadas": 0, "llamadas_llm": 0}
     fuentes = {f.id: f for f in db.query(Fuente).all()}
 
-    for i, pub in enumerate(pendientes, 1):
-        fuente = fuentes[pub.fuente_id]
-        texto = html_a_texto(pub.contenido_original) or pub.titulo or ""
-        titulo = pub.titulo or "(sin título)"
-
-        tipo, ambiguo = clasificar(titulo, texto)
+    for i, o in enumerate(_pendientes(db), 1):
+        fuente = fuentes[o.fuente_id]
+        tipo, ambiguo = clasificar(o.titulo, o.texto)
         if ambiguo and llm_restantes > 0:
             llm_restantes -= 1
             resumen["llamadas_llm"] += 1
             try:
-                tipo = _clasificar_con_llm(titulo, texto) or tipo
+                tipo = _clasificar_con_llm(o.titulo, o.texto) or tipo
             except Exception:
                 pass  # si el LLM falla queda OTRO
 
-        publicada = (pub.fecha_publicacion or pub.fecha_captura).date()
-        inicio, fin, motivo_vigencia = calcular_vigencia(
-            titulo, texto, publicada, es_pagina=pub.id_externo.startswith("pages:")
-        )
+        inicio, fin, motivo_vigencia = calcular_vigencia(o.titulo, o.texto, o.publicada, o.es_pagina)
         estado = estado_por_confiabilidad(fuente.confiabilidad_base)
         explicacion = f"Fuente «{fuente.nombre}» (confiabilidad {fuente.confiabilidad_base}%); {motivo_vigencia}"
         if fin and fin < hoy:
@@ -109,36 +164,25 @@ def procesar_pendientes(db: Session, hoy: date | None = None) -> dict:
             explicacion += "; la vigencia ya pasó"
 
         # ¿Es una versión nueva de algo que ya teníamos?
-        info = (
-            db.query(Informacion)
-            .join(Evidencia, Evidencia.informacion_id == Informacion.id)
-            .join(Publicacion, Publicacion.id == Evidencia.publicacion_id)
-            .filter(
-                Publicacion.fuente_id == pub.fuente_id,
-                Publicacion.id_externo == pub.id_externo,
-                Publicacion.id != pub.id,
-            )
-            .order_by(Informacion.id.desc())
-            .first()
-        )
+        info = o.version_anterior.order_by(Informacion.id.desc()).first()
         if info:
             version = (db.query(func.max(Historial.version)).filter_by(informacion_id=info.id).scalar() or 0) + 1
             db.add(Historial(informacion_id=info.id, version=version, contenido_anterior=info.contenido,
-                             contenido_nuevo=texto, motivo="Actualización en la fuente"))
+                             contenido_nuevo=o.texto, motivo="Actualización en la fuente"))
             resumen["actualizadas"] += 1
         else:
-            info = Informacion(tipo=tipo, titulo=titulo[:500], contenido=texto, estado=estado,
+            info = Informacion(tipo=tipo, titulo=o.titulo[:500], contenido=o.texto, estado=estado,
                                confianza=fuente.confiabilidad_base)
             db.add(info)
             db.flush()
             db.add(Historial(informacion_id=info.id, version=1, contenido_anterior=None,
-                             contenido_nuevo=texto, motivo="Captura inicial"))
+                             contenido_nuevo=o.texto, motivo="Captura inicial"))
             resumen["creadas"] += 1
 
-        info.tipo, info.titulo, info.contenido = tipo, titulo[:500], texto
+        info.tipo, info.titulo, info.contenido = tipo, o.titulo[:500], o.texto
         info.fecha_inicio, info.fecha_fin = inicio, fin
         info.estado, info.confianza = estado, fuente.confiabilidad_base
-        db.add(Evidencia(informacion_id=info.id, fuente_id=fuente.id, publicacion_id=pub.id))
+        db.add(Evidencia(informacion_id=info.id, fuente_id=fuente.id, **o.evidencia))
         db.add(Verificacion(informacion_id=info.id, resultado=estado,
                             puntuacion=fuente.confiabilidad_base, explicacion=explicacion))
         if i % 50 == 0:

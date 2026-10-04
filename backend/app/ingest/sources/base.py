@@ -24,6 +24,16 @@ class ItemCrudo:
     fecha_modificacion: datetime | None
 
 
+@dataclass
+class DocumentoCrudo:
+    """Un archivo (PDF) tal como se descargó de la fuente."""
+    url: str
+    nombre: str
+    contenido: bytes
+    fecha_publicacion: datetime | None
+    fecha_modificacion: datetime | None
+
+
 class Source(ABC):
     def __init__(self, fuente: Fuente):
         self.fuente = fuente
@@ -35,3 +45,7 @@ class Source(ABC):
         Devuelve los ítems creados o modificados después de `desde`
         (todos si es None). No debe usar LLM.
         """
+
+    def obtener_documentos(self, desde: datetime | None) -> Iterator[DocumentoCrudo]:
+        """Archivos nuevos o modificados después de `desde`. Por defecto, ninguno."""
+        return iter(())

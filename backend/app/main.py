@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
-from app.routers import auth, usuarios, chat
+from app.routers import auth, usuarios, chat, fuentes
 
 settings = get_settings()
 
@@ -45,6 +45,7 @@ API_PREFIX = "/api/v1"
 app.include_router(auth.router,     prefix=API_PREFIX)
 app.include_router(usuarios.router, prefix=API_PREFIX)
 app.include_router(chat.router,     prefix=API_PREFIX)
+app.include_router(fuentes.router,  prefix=API_PREFIX)
 
 # ── Health check ──────────────────────────────────────────────────────────────
 @app.get("/health", tags=["Sistema"], include_in_schema=False)

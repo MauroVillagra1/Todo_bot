@@ -89,6 +89,7 @@ class Documento(Base):
     hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     etag: Mapped[str | None] = mapped_column(String(200))
     last_modified: Mapped[str | None] = mapped_column(String(100))
+    fecha_publicacion: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     fecha_captura: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

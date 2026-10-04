@@ -19,8 +19,9 @@ passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 python-multipart==0.0.9
 
-# Ingesta: extracción de texto de HTML
+# Ingesta: extracción de texto de HTML y PDF
 beautifulsoup4==4.13.4
+pypdf==6.1.1
 
 # IA
 httpx==0.27.0
