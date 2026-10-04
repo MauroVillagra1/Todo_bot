@@ -49,5 +49,6 @@ jobs:
           if [ -n "$FUENTE" ]; then
             python scripts/run_ingest.py --fuente "$FUENTE"
           else
-            python scripts/run_ingest.py
+            # Instagram se lee desde la PC local (scripts/instagram_local.ps1)
+            python scripts/run_ingest.py --excluir-tipo INSTAGRAM
           fi

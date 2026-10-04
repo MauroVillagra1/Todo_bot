@@ -166,7 +166,7 @@ https://sistemasfrtutn.ar/wp-json/wp/v2/media?mime_type=application/pdf&modified
 | Fuente | Cómo entra el contenido |
 |---|---|
 | **WhatsApp** | No existe una API para leer canales. Un **MOD** carga el posteo desde el **Panel → Cargar publicación**: link, título, texto y fecha. |
-| **Instagram** | Igual que WhatsApp (carga manual), **o** automático con la API oficial de Meta si el dueño de la cuenta genera un token. |
+| **Instagram** | Automático con **Instaloader desde la PC local** al iniciar Windows (ver abajo). También carga manual, o la API oficial de Meta si el dueño de la cuenta genera un token. |
 
 Lo cargado a mano pasa por el **mismo circuito** que lo automático: hash, versionado si se vuelve a cargar el mismo link con otro texto, chunks y verificación. El estado depende de la confiabilidad de la fuente: 100% → CONFIRMADA, 90% → PROBABLE, 50% → NO_CONFIRMADA.
 
@@ -185,7 +185,23 @@ Configuración (una vez):
 - En la app de Meta → WhatsApp → Configuración → Webhook: URL `https://back-bot-6icc.vercel.app/api/v1/webhooks/whatsapp`, el mismo verify token, y suscribirse a **messages**.
 - Con el número de prueba hay que agregar tu número como destinatario permitido en la app.
 
-### Activar Instagram automático (opcional, costo 0)
+### Instagram con Instaloader (PC local, al iniciar Windows)
+
+Las 4 cuentas de Instagram (`config: {"instaloader": true}`) se leen desde la PC, no desde GitHub Actions: Instagram bloquea las IPs de datacenter y pide login. Se lee el texto del posteo (caption), solo lo publicado después de la última revisión. La primera vez se leen los últimos 30 posts.
+
+Configuración (una vez, en PowerShell desde la raíz del repo):
+```powershell
+pip install instaloader
+instaloader --login TU_USUARIO      # pide la contraseña; conviene una cuenta secundaria
+.\scripts\instalar_instagram_local.ps1 -Usuario TU_USUARIO
+```
+- Queda un acceso directo `UTNIA Instagram` en la carpeta Inicio (`shell:startup`). Al iniciar sesión corre oculto `scripts/instagram_local.ps1`.
+- Registro de cada corrida: `%LOCALAPPDATA%\UTNIA\instagram.log`.
+- Para correrlo a mano: `.\scripts\instagram_local.ps1`.
+- Si Instagram cierra la sesión, se vuelve a ejecutar `instaloader --login TU_USUARIO`.
+- Scrapear va contra los términos de Instagram: el riesgo es para la cuenta usada, por eso conviene que sea secundaria.
+
+### Activar Instagram por API oficial (opcional, costo 0)
 
 1. El dueño de la cuenta (que debe ser **profesional**, Business o Creator) autoriza una app de Meta y genera un **token de larga duración**.
 2. El token se guarda como **secret** de GitHub, por ejemplo `IG_TOKEN_SAE_FRT`, y se agrega al `env:` del workflow `ingest.yml`.

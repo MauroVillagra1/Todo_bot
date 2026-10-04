@@ -200,8 +200,14 @@ def procesar_fuente(db: Session, fuente: Fuente, adaptador: Source | None = None
     return ingesta
 
 
-def procesar_fuentes_activas(db: Session, nombre: str | None = None) -> list[Ingesta]:
+def procesar_fuentes_activas(
+    db: Session, nombre: str | None = None, tipo: str | None = None, excluir_tipo: str | None = None
+) -> list[Ingesta]:
     consulta = db.query(Fuente).filter(Fuente.activa.is_(True))
     if nombre:
         consulta = consulta.filter(Fuente.nombre == nombre)
+    if tipo:
+        consulta = consulta.filter(Fuente.tipo == tipo)
+    if excluir_tipo:
+        consulta = consulta.filter(Fuente.tipo != excluir_tipo)
     return [procesar_fuente(db, fuente) for fuente in consulta.order_by(Fuente.id).all()]

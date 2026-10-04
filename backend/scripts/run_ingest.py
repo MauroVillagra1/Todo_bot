@@ -4,6 +4,8 @@ Entrypoint del worker de ingesta.
 Uso (desde backend/):
     python scripts/run_ingest.py                      # todas las fuentes activas
     python scripts/run_ingest.py --fuente "Sistemas FRT"
+    python scripts/run_ingest.py --tipo INSTAGRAM     # solo Instagram (PC local)
+    python scripts/run_ingest.py --excluir-tipo INSTAGRAM
 
 Sale con código 1 si alguna fuente terminó con error (GitHub Actions lo marca en rojo).
 """
@@ -22,11 +24,13 @@ from app.models.ingesta import EstadoIngestaEnum, Fuente  # noqa: E402
 def main() -> int:
     parser = argparse.ArgumentParser(description="Ingesta de fuentes activas")
     parser.add_argument("--fuente", help="Nombre exacto de una fuente activa")
+    parser.add_argument("--tipo", help="Solo fuentes de este tipo (ej. INSTAGRAM)")
+    parser.add_argument("--excluir-tipo", help="Todas menos las de este tipo")
     args = parser.parse_args()
 
     db = SessionLocal()
     try:
-        ingestas = procesar_fuentes_activas(db, args.fuente)
+        ingestas = procesar_fuentes_activas(db, args.fuente, args.tipo, args.excluir_tipo)
         if not ingestas:
             print("No hay fuentes activas para procesar.")
         hubo_error = False

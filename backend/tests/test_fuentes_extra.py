@@ -186,3 +186,45 @@ def test_no_se_carga_a_mano_en_fuentes_automaticas(client, crear_usuario, tablas
     assert client.post(f"/api/v1/fuentes/{wp.id}/publicaciones", json=POSTEO, headers=auth(mod)).status_code == 400
     lista = client.get("/api/v1/fuentes/", headers=auth(mod)).json()
     assert [(f["nombre"], f["carga_manual"]) for f in lista] == [("Sistemas FRT", False)]
+
+
+# ── Instagram con Instaloader (PC local) ──────────────────────────────────────
+
+def _post(n: int, dias: int):
+    from types import SimpleNamespace
+    return SimpleNamespace(mediaid=n, shortcode=f"C{n}", caption=f"Aviso {n}\nInscripción a mesas",
+                           date_utc=datetime(2026, 9, dias))
+
+
+def _instaloader(fuente, posts):
+    adaptador = InstagramSource(fuente)
+    pedidos = []
+    adaptador.posts_instaloader = lambda usuario: pedidos.append(usuario) or iter(posts)
+    return adaptador, pedidos
+
+
+def test_instaloader_solo_corre_en_la_pc_local(tablas, monkeypatch):
+    monkeypatch.delenv("IG_INSTALOADER", raising=False)
+    f = _fuente(tablas, TipoFuenteEnum.INSTAGRAM, "SAE", config={"instaloader": True})
+    adaptador, pedidos = _instaloader(f, [_post(1, 20)])
+    assert list(adaptador.obtener_cambios(None)) == [] and pedidos == []
+
+
+def test_instaloader_trae_lo_nuevo_saltando_fijados_viejos(tablas, monkeypatch):
+    monkeypatch.setenv("IG_INSTALOADER", "1")
+    db = tablas
+    f = _fuente(db, TipoFuenteEnum.INSTAGRAM, "SAE", config={"instaloader": True})
+    f.url = "https://instagram.com/sae.frt.ofc/"
+    f.ultima_revision = datetime(2026, 9, 10, tzinfo=timezone.utc)
+    db.commit()
+    # un fijado viejo arriba, dos nuevos y después solo viejos
+    posts = [_post(1, 2), _post(2, 25), _post(3, 15)] + [_post(10 + i, 5) for i in range(10)]
+    adaptador, pedidos = _instaloader(f, posts)
+
+    ing = procesar_fuente(db, f, adaptador)
+    assert pedidos == ["sae.frt.ofc"]
+    assert ing.nuevos == 2
+    pubs = db.query(Publicacion).order_by(Publicacion.id_externo).all()
+    assert [p.id_externo for p in pubs] == ["ig:2", "ig:3"]
+    assert pubs[0].url == "https://www.instagram.com/p/C2/" and pubs[0].titulo == "Aviso 2"
+    assert f.ultima_revision.replace(tzinfo=timezone.utc) == datetime(2026, 9, 25, tzinfo=timezone.utc)
