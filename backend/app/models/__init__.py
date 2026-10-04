@@ -9,6 +9,7 @@ from app.models.ingesta import Chunk, Documento, Fuente, Ingesta, Publicacion
 from app.models.metrica import MetricaDiaria
 from app.models.informacion import Evidencia, Historial, Informacion, Verificacion
 from app.models.cache import CacheRespuesta
+from app.models.horario import HorarioClase
 
 __all__ = [
     "Usuario",
@@ -25,4 +26,5 @@ __all__ = [
     "Verificacion",
     "Historial",
     "CacheRespuesta",
+    "HorarioClase",
 ]

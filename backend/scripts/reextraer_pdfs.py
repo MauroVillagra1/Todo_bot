@@ -18,7 +18,7 @@ import httpx  # noqa: E402
 
 from app.core.database import SessionLocal  # noqa: E402
 from app.ingest.extract import hash_bytes, hash_texto  # noqa: E402
-from app.ingest.pipeline import chunks_de_paginas, leer_pdf  # noqa: E402
+from app.ingest.pipeline import chunks_de_paginas, extraer_pdf, guardar_grillas  # noqa: E402
 from app.ingest.sources.base import USER_AGENT  # noqa: E402
 from app.models.ingesta import Chunk, Documento  # noqa: E402
 
@@ -34,7 +34,8 @@ def main() -> None:
                     contenido = gzip.decompress(doc.contenido_original)
                 else:
                     contenido = httpx.get(doc.url, timeout=60, headers={"User-Agent": USER_AGENT}).content
-                paginas = leer_pdf(contenido)
+                paginas, grillas = extraer_pdf(contenido)
+                guardar_grillas(db, doc.id, grillas)
                 texto = "\n\n".join(p for p in paginas if p)
 
                 db.query(Chunk).filter(Chunk.documento_id == doc.id).delete()

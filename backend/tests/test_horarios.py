@@ -19,7 +19,7 @@ def grillas():
 
 
 def _grilla(grillas, comision):
-    return next(g for g in grillas if f"Comisión : {comision}" in g).splitlines()
+    return next(g for g in grillas if f"Comisión {comision}" in g).splitlines()
 
 
 def test_una_grilla_por_comision(grillas):
@@ -30,17 +30,26 @@ def test_una_grilla_por_comision(grillas):
 
 def test_bloques_combinados_con_hora_de_inicio_y_fin(grillas):
     lineas = _grilla(grillas, "4K01")
-    assert "Lunes 14:00 a 16:15: Administración de Sistemas de Información Cordero Lucas" in lineas
-    assert "Lunes 16:15 a 18:30: Redes de Datos Moyano Alberto (Lab. 154)" in lineas
+    assert lineas[0] == ("Horario — Comisión 4K01 · 4º año · Plan 2023 · Segundo cuatrimestre"
+                         " · Turno Tarde · Aula 212")
+    assert "Lunes 14:00 a 16:15: Administración de Sistemas de Información — Docente: Cordero Lucas" in lineas
+    assert "Lunes 16:15 a 18:30: Redes de Datos — Docente: Moyano Alberto — Lab. 154" in lineas
     # Bloque más corto que los demás (empieza 14:45)
-    assert "Martes 14:45 a 16:15: Redes de Datos Nazar Patricia" in lineas
-    assert "Viernes 16:15 a 18:30: Tecnologías para la automatización Javier Canto" in lineas
+    assert "Martes 14:45 a 16:15: Redes de Datos — Docente: Nazar Patricia" in lineas
+    assert "Viernes 16:15 a 18:30: Tecnologías para la automatización — Docente: Javier Canto" in lineas
 
 
 def test_turno_noche(grillas):
     lineas = _grilla(grillas, "4K03")
-    assert "Lunes 19:00 a 21:15: Redes de Datos Eduardo Nemer (Lab.154)" in lineas
-    assert "Viernes 21:15 a 23:30: Administración de Sistemas de Información Sardi Duilio" in lineas
+    assert "Lunes 19:00 a 21:15: Redes de Datos — Docente: Eduardo Nemer — Lab. 154" in lineas
+    assert "Viernes 21:15 a 23:30: Administración de Sistemas de Información — Docente: Sardi Duilio" in lineas
+
+
+def test_bloque_partido_por_una_linea_se_une(grillas):
+    # 4K08: el docente quedó separado de la materia por una línea dentro de la celda
+    lineas = _grilla(grillas, "4K08")
+    assert ("Miércoles 17:45 a 20:45: PROGRAMACION DE APLICACIONES DISTRIBUIDAS (electiva)"
+            " — Docente: De La Cruz José — Lab. 155") in lineas
 
 
 def test_pdf_que_no_es_horario_usa_la_extraccion_comun():

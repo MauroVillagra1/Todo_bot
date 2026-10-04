@@ -21,6 +21,7 @@ from app.ingest.classify import normalizar
 from app.models.cache import CacheRespuesta
 from app.models.informacion import Informacion
 from app.models.ingesta import Chunk
+from app.rag.horarios import responder_horario
 from app.rag.search import Resultado, buscar
 from app.services import llm
 from app.services.metricas import incrementar
@@ -139,35 +140,10 @@ def responder(db: Session, pregunta: str, historial: list[dict]) -> dict:
             return {**hit.respuesta, "desde_cache": True}
         incrementar(db, "cache_misses")
 
-    # Para preguntas de seguimiento se busca también con la pregunta anterior
     anterior = next((m["content"] for m in reversed(historial) if m["role"] == "user"), "")
-    resultados = buscar(db, f"{anterior} {pregunta}".strip())
+    salida = _responder_sin_cache(db, pregunta, historial, anterior)
 
-    if not resultados:
-        incrementar(db, "consultas_sin_evidencia")
-        salida = {"respuesta": SIN_EVIDENCIA, "estado": "NO_CONFIRMADA", "fuentes": [], "fecha_informacion": None}
-    else:
-        mensajes = [
-            {"role": "system", "content": f"{SISTEMA}\n\nCONTEXTO:\n{_contexto(resultados)}"},
-            *historial,
-            {"role": "user", "content": pregunta},
-        ]
-        incrementar(db, "llamadas_llm")
-        try:
-            salida = armar_respuesta(llm.completar(mensajes, max_tokens=MAX_TOKENS_RESPUESTA), resultados)
-        except Exception as e:
-            # Sin cupo o sin servicio de IA: igual se muestran las evidencias (no se cachea)
-            logger.warning("LLM no disponible: %s", str(e)[:300])
-            incrementar(db, "errores_llm")
-            return {
-                "respuesta": SIN_LLM,
-                "estado": "NO_CONFIRMADA",
-                "fuentes": [_fuente(n, r) for n, r in enumerate(resultados, 1)],
-                "fecha_informacion": None,
-                "desde_cache": False,
-            }
-
-    if clave:
+    if clave and salida["respuesta"] != SIN_LLM:  # si falló la IA no se cachea
         existente = db.get(CacheRespuesta, clave)
         expira = _ahora() + timedelta(hours=settings.CACHE_TTL_HORAS)
         if existente:  # entrada vencida: se renueva
@@ -175,3 +151,36 @@ def responder(db: Session, pregunta: str, historial: list[dict]) -> dict:
         else:
             db.add(CacheRespuesta(clave=clave, respuesta=salida, expira_en=expira))
     return {**salida, "desde_cache": False}
+
+
+def _responder_sin_cache(db: Session, pregunta: str, historial: list[dict], anterior: str) -> dict:
+    # Horarios: se responden con SQL sobre las grillas, sin LLM
+    horario = responder_horario(db, pregunta, anterior)
+    if horario:
+        incrementar(db, "consultas_horario_sql")
+        return horario
+
+    # Para preguntas de seguimiento se busca también con la pregunta anterior
+    resultados = buscar(db, f"{anterior} {pregunta}".strip())
+    if not resultados:
+        incrementar(db, "consultas_sin_evidencia")
+        return {"respuesta": SIN_EVIDENCIA, "estado": "NO_CONFIRMADA", "fuentes": [], "fecha_informacion": None}
+
+    mensajes = [
+        {"role": "system", "content": f"{SISTEMA}\n\nCONTEXTO:\n{_contexto(resultados)}"},
+        *historial,
+        {"role": "user", "content": pregunta},
+    ]
+    incrementar(db, "llamadas_llm")
+    try:
+        return armar_respuesta(llm.completar(mensajes, max_tokens=MAX_TOKENS_RESPUESTA), resultados)
+    except Exception as e:
+        # Sin cupo o sin servicio de IA: igual se muestran las evidencias
+        logger.warning("LLM no disponible: %s", str(e)[:300])
+        incrementar(db, "errores_llm")
+        return {
+            "respuesta": SIN_LLM,
+            "estado": "NO_CONFIRMADA",
+            "fuentes": [_fuente(n, r) for n, r in enumerate(resultados, 1)],
+            "fecha_informacion": None,
+        }

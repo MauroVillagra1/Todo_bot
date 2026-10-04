@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session
 
 from app.ingest.chunk import dividir
 from app.ingest.extract import hash_bytes, hash_texto, html_a_texto, pdf_a_paginas
-from app.ingest.horarios import leer_horarios
+from app.ingest.horarios import Grilla, leer_grillas, normalizar_materia
+from app.models.horario import HorarioClase
 from app.ingest.sources import DocumentoCrudo, ItemCrudo, Source, obtener_adaptador
 from app.models.ingesta import (
     Chunk, Documento, EstadoIngestaEnum, Fuente, Ingesta, Publicacion, TipoDocumentoEnum,
@@ -68,23 +69,42 @@ def chunks_de_paginas(nombre: str, paginas: list[str]) -> list[str]:
     return [trozo for pagina in paginas for trozo in dividir(nombre, pagina, MAX_CARACTERES_PAGINA)]
 
 
-def leer_pdf(contenido: bytes) -> list[str]:
+def extraer_pdf(contenido: bytes) -> tuple[list[str], list[Grilla]]:
     """
-    Partes de texto de un PDF: una por grilla si es un horario (lector de
-    celdas combinadas), si no una por página (extracción con columnas).
+    (partes de texto, grillas de horario). Si el PDF es un horario, una parte por
+    grilla (lector de celdas combinadas); si no, una por página y sin grillas.
     """
     try:
-        grillas = leer_horarios(contenido)
+        grillas = leer_grillas(contenido)
         if grillas:
-            return grillas
+            return [g.texto() for g in grillas], grillas
     except Exception:
         pass  # PDF raro: se usa la extracción común
-    return pdf_a_paginas(contenido)
+    return pdf_a_paginas(contenido), []
+
+
+def leer_pdf(contenido: bytes) -> list[str]:
+    return extraer_pdf(contenido)[0]
+
+
+def guardar_grillas(db: Session, documento_id: int, grillas: list[Grilla]) -> None:
+    """Reemplaza los bloques de clase del documento (para responder horarios con SQL)."""
+    db.query(HorarioClase).filter(HorarioClase.documento_id == documento_id).delete()
+    for g in grillas:
+        for b in g.bloques:
+            if not b.materia:
+                continue
+            db.add(HorarioClase(
+                documento_id=documento_id, comision=g.comision, anio=g.anio, plan=g.plan,
+                turno=g.turno, periodo=g.periodo, aula=g.aula, dia=b.dia, inicio=b.inicio, fin=b.fin,
+                materia=b.materia[:200], materia_norm=normalizar_materia(b.materia)[:200],
+                docente=b.docente[:200] or None, lugar=b.lugar[:60] or None, electiva=b.electiva,
+            ))
 
 
 def guardar_documento(db: Session, fuente: Fuente, doc: DocumentoCrudo) -> str:
     """Igual que guardar_publicacion, para archivos (PDF). Un chunk por página o por grilla."""
-    paginas = leer_pdf(doc.contenido)
+    paginas, grillas = extraer_pdf(doc.contenido)
     texto = "\n\n".join(p for p in paginas if p)
     # PDF sin texto (escaneado): el hash del archivo evita reprocesarlo
     h = hash_texto(f"{doc.nombre}\n{texto}") if texto else hash_bytes(doc.contenido)
@@ -112,6 +132,7 @@ def guardar_documento(db: Session, fuente: Fuente, doc: DocumentoCrudo) -> str:
     db.flush()
     for orden, trozo in enumerate(chunks_de_paginas(doc.nombre, paginas)):
         db.add(Chunk(documento_id=documento.id, orden=orden, texto=trozo, hash=hash_texto(trozo)))
+    guardar_grillas(db, documento.id, grillas)
     return ACTUALIZADO if anteriores else NUEVO
 
 

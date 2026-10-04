@@ -44,6 +44,7 @@ def rag(db, monkeypatch):
         return estado["texto"]
 
     monkeypatch.setattr(answer, "buscar", buscar_falso)
+    monkeypatch.setattr(answer, "responder_horario", lambda db, p, a="": None)  # ver test_horarios_sql
     monkeypatch.setattr(answer.llm, "completar", completar_falso)
     # El rate limit usa now() de Postgres: en SQLite no aplica
     monkeypatch.setattr("app.routers.chat.verificar_limite", lambda u, d: None)

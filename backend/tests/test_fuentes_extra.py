@@ -8,6 +8,7 @@ from app.ingest.pipeline import procesar_fuente
 from app.ingest.sources.instagram import InstagramSource
 from app.ingest.sources.wordpress import WordPressSource
 from app.ingest.verify import calcular_vigencia, procesar_pendientes
+from app.models.horario import HorarioClase
 from app.models.informacion import Evidencia, Historial, Informacion, Verificacion
 from app.models.ingesta import Chunk, Documento, Fuente, Ingesta, Publicacion, TipoFuenteEnum
 from app.models.metrica import MetricaDiaria
@@ -44,7 +45,7 @@ def pdf_con_texto(*paginas: str) -> bytes:
 def tablas(db):
     engine = db.get_bind()
     for m in (Fuente, Documento, Publicacion, Chunk, Ingesta, MetricaDiaria,
-              Informacion, Evidencia, Verificacion, Historial):
+              Informacion, Evidencia, Verificacion, Historial, HorarioClase):
         m.__table__.create(engine)
     return db
 
