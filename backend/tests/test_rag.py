@@ -133,9 +133,28 @@ def test_seguimiento_usa_historial_y_no_cache(client, crear_usuario, rag):
     assert [m["role"] for m in llamadas["llm"][-1]] == ["system", "user", "assistant", "user"]
 
 
-def test_si_el_llm_falla_muestra_evidencias(client, crear_usuario, rag):
+def test_si_el_llm_falla_y_no_hay_frases_relevantes_muestra_evidencias(client, crear_usuario, rag):
     _, estado = rag
     estado["texto"] = RuntimeError("429 rate limit")
     data = _preguntar(client, crear_usuario("u@alu.frt.utn.edu.ar"), "¿Mesas?")
     assert data["respuesta"] == answer.SIN_LLM
     assert len(data["fuentes"]) == 2
+
+
+def test_si_el_llm_falla_responde_con_extracto_textual(client, crear_usuario, rag):
+    llamadas, estado = rag
+    estado["texto"] = RuntimeError("429 free-models-per-day")
+    r1 = _r(1)
+    r1.titulo, r1.texto = "Inscripciones a mesas", (
+        "Inscripciones a mesas\nLa inscripción a mesas de examen de diciembre es del 25/11 al 28/11 "
+        "por autogestión. El aula se informa después.")
+    estado["resultados"] = [r1, _r(2)]
+    u = crear_usuario("u@alu.frt.utn.edu.ar")
+
+    data = _preguntar(client, u, "¿Hasta cuándo es la inscripción a mesas de examen?")
+    assert "del 25/11 al 28/11" in data["respuesta"] and "[1]" in data["respuesta"]
+    assert data["estado"] == "CONFIRMADA"
+    assert [f["numero"] for f in data["fuentes"]] == [1]
+    # No se cachea: cuando vuelva la IA, la misma pregunta se responde completa
+    estado["texto"] = "Hasta el 28/11 [1]."
+    assert _preguntar(client, u, "¿Hasta cuándo es la inscripción a mesas de examen?")["respuesta"] == "Hasta el 28/11 [1]."

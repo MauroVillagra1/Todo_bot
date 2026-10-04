@@ -22,6 +22,7 @@ from app.models.cache import CacheRespuesta
 from app.models.informacion import Informacion
 from app.models.ingesta import Chunk
 from app.rag.conversacion import responder_conversacion
+from app.rag.extractivo import responder_extractivo
 from app.rag.horarios import responder_horario
 from app.rag.search import Resultado, buscar
 from app.services import llm
@@ -144,7 +145,8 @@ def responder(db: Session, pregunta: str, historial: list[dict]) -> dict:
     anterior = next((m["content"] for m in reversed(historial) if m["role"] == "user"), "")
     salida = _responder_sin_cache(db, pregunta, historial, anterior)
 
-    if clave and salida["respuesta"] != SIN_LLM:  # si falló la IA no se cachea
+    # Si falló la IA no se cachea: cuando vuelva el cupo, la misma pregunta tendrá respuesta completa
+    if clave and salida["respuesta"] != SIN_LLM and not salida.pop("sin_ia", False):
         existente = db.get(CacheRespuesta, clave)
         expira = _ahora() + timedelta(hours=settings.CACHE_TTL_HORAS)
         if existente:  # entrada vencida: se renueva
@@ -182,12 +184,25 @@ def _responder_sin_cache(db: Session, pregunta: str, historial: list[dict], ante
     try:
         return armar_respuesta(llm.completar(mensajes, max_tokens=MAX_TOKENS_RESPUESTA), resultados)
     except Exception as e:
-        # Sin cupo o sin servicio de IA: igual se muestran las evidencias
         logger.warning("LLM no disponible: %s", str(e)[:300])
         incrementar(db, "errores_llm")
+
+    # Sin cupo o sin servicio de IA: respuesta extractiva con frases textuales de las fuentes
+    texto, usados = responder_extractivo(pregunta, resultados)
+    if usados:
+        incrementar(db, "respuestas_extractivas")
+        fuentes = [(n, resultados[n - 1]) for n in usados]
+        fechas = [r.fecha for _, r in fuentes if r.fecha]
         return {
-            "respuesta": SIN_LLM,
-            "estado": "NO_CONFIRMADA",
-            "fuentes": [_fuente(n, r) for n, r in enumerate(resultados, 1)],
-            "fecha_informacion": None,
+            "respuesta": texto,
+            "estado": _peor_estado([r.estado for _, r in fuentes]),
+            "fuentes": [_fuente(n, r) for n, r in fuentes],
+            "fecha_informacion": max(fechas).date().isoformat() if fechas else None,
+            "sin_ia": True,
         }
+    return {
+        "respuesta": SIN_LLM,
+        "estado": "NO_CONFIRMADA",
+        "fuentes": [_fuente(n, r) for n, r in enumerate(resultados, 1)],
+        "fecha_informacion": None,
+    }
