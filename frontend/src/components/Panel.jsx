@@ -2,29 +2,18 @@
  * Panel — MOD y ADMIN.
  *   Resumen   → estado del sistema y métricas (ADM-01, OBS-01)
  *   Fuentes   → carga manual de Instagram/WhatsApp; ADMIN además activa/desactiva y ajusta confiabilidad
+ *   Sugerencias → datos propuestos por usuarios: aceptar (con correcciones) o rechazar con motivo
+ *   Horarios  → solo ADMIN: grilla año → comisión → materias, editable (GrillaHorarios)
  *   Usuarios  → solo ADMIN: crear cuentas, cambiar rol, activar/desactivar, resetear contraseña
  * La UI solo oculta lo que no corresponde: los permisos reales se validan en el backend.
  */
 import { useEffect, useState } from 'react'
 import {
-  actualizarFuente, actualizarUsuario, cargarPublicacionManual, crearUsuario,
-  listarFuentes, listarUsuarios, obtenerResumen,
+  aceptarSugerencia, actualizarFuente, actualizarUsuario, cargarPublicacionManual, crearUsuario,
+  listarFuentes, listarSugerencias, listarUsuarios, obtenerResumen, rechazarSugerencia,
 } from '../api'
-
-const campo = 'w-full bg-[#141417] border border-[#232327] rounded-xl px-3 py-2 text-sm text-[#f4f4f5] placeholder-[#4b4b53] focus:outline-none focus:border-[#e8592e]/50 transition-colors'
-const tarjeta = 'bg-[#0d0d10] border border-[#1e1e22] rounded-2xl p-5'
-const boton = 'bg-[#e8592e] hover:bg-[#f2703f] disabled:bg-[#232327] disabled:text-[#4b4b53] text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors'
-
-function fechaHora(iso) {
-  return iso ? new Date(iso).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : 'nunca'
-}
-
-function errorDe(err, porDefecto) {
-  const detalle = err.response?.data?.detail
-  if (typeof detalle === 'string') return detalle
-  if (Array.isArray(detalle)) return detalle.map(d => d.msg).join(' · ')
-  return porDefecto
-}
+import GrillaHorarios from './GrillaHorarios'
+import { boton, campo, errorDe, fechaHora, tarjeta } from './ui'
 
 // ── Resumen ───────────────────────────────────────────────────────────────────
 
@@ -244,6 +233,116 @@ function Fuentes({ esAdmin }) {
   )
 }
 
+// ── Sugerencias (MOD y ADMIN) ─────────────────────────────────────────────────
+
+function TarjetaSugerencia({ s, onRevisada }) {
+  const [titulo, setTitulo] = useState(s.titulo)
+  const [contenido, setContenido] = useState(s.contenido)
+  const [motivo, setMotivo] = useState('')
+  const [rechazando, setRechazando] = useState(false)
+  const [enviando, setEnviando] = useState(false)
+  const [error, setError] = useState(null)
+
+  async function revisar(accion) {
+    setEnviando(true)
+    setError(null)
+    try {
+      onRevisada(accion === 'aceptar'
+        ? await aceptarSugerencia(s.id, { titulo, contenido })
+        : await rechazarSugerencia(s.id, motivo))
+    } catch (err) {
+      setError(errorDe(err, 'No se pudo guardar'))
+      setEnviando(false)
+    }
+  }
+
+  return (
+    <div className={`${tarjeta} space-y-3`}>
+      <p className="text-xs text-[#8b8b93]">
+        {s.autor} · {fechaHora(s.creada_en)}
+        {s.url && <> · <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-[#f2894f] hover:underline">ver fuente</a></>}
+      </p>
+      <input value={titulo} onChange={e => setTitulo(e.target.value)} className={`${campo} font-medium`} />
+      <textarea rows={4} value={contenido} onChange={e => setContenido(e.target.value)} className={campo} />
+      {rechazando && (
+        <input autoFocus placeholder="Motivo del rechazo (lo ve quien la envió)" value={motivo}
+               onChange={e => setMotivo(e.target.value)} className={campo} />
+      )}
+      <div className="flex items-center gap-3">
+        {rechazando ? (
+          <>
+            <button disabled={enviando || motivo.trim().length < 3} onClick={() => revisar('rechazar')}
+                    className="bg-red-500/80 hover:bg-red-500 disabled:bg-[#232327] disabled:text-[#4b4b53] text-white px-4 py-2 rounded-xl text-sm font-medium">
+              Confirmar rechazo
+            </button>
+            <button onClick={() => setRechazando(false)} className="text-xs text-[#8b8b93] hover:underline">Cancelar</button>
+          </>
+        ) : (
+          <>
+            <button disabled={enviando} onClick={() => revisar('aceptar')} className={boton}>
+              {enviando ? 'Guardando…' : 'Aceptar y publicar'}
+            </button>
+            <button onClick={() => setRechazando(true)} className="text-sm text-red-400 hover:underline">Rechazar</button>
+          </>
+        )}
+        {error && <span className="text-xs text-red-400">{error}</span>}
+      </div>
+    </div>
+  )
+}
+
+const FILTROS_SUGERENCIAS = [['PENDIENTE', 'Pendientes'], ['ACEPTADA', 'Aceptadas'], ['RECHAZADA', 'Rechazadas']]
+
+function Sugerencias() {
+  const [estado, setEstado] = useState('PENDIENTE')
+  const [lista, setLista] = useState(null)
+  const [error, setError] = useState(null)
+  const [aviso, setAviso] = useState(null)
+
+  useEffect(() => {
+    setLista(null)
+    listarSugerencias(estado).then(setLista).catch(e => setError(errorDe(e, 'No se pudieron cargar las sugerencias.')))
+  }, [estado])
+
+  function revisada(s) {
+    setLista(prev => prev.filter(x => x.id !== s.id))
+    setAviso(s.estado === 'ACEPTADA'
+      ? `«${s.titulo}» publicada${s.informacion_estado ? ` (${s.informacion_estado})` : ''}: ya la usa el chat.`
+      : `«${s.titulo}» rechazada.`)
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-1">
+        {FILTROS_SUGERENCIAS.map(([id, label]) => (
+          <button key={id} onClick={() => setEstado(id)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
+                    estado === id ? 'bg-[#e8592e]/15 text-[#f2894f]' : 'text-[#8b8b93] hover:text-[#f4f4f5] hover:bg-[#17171b]'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {aviso && <p className="text-xs text-emerald-400">{aviso}</p>}
+      {error && <p className="text-sm text-red-400">{error}</p>}
+      {!lista ? <p className="text-sm text-[#8b8b93]">Cargando…</p>
+        : lista.length === 0 ? <p className="text-sm text-[#8b8b93]">No hay sugerencias {estado === 'PENDIENTE' ? 'para revisar' : 'en esta lista'}.</p>
+        : estado === 'PENDIENTE' ? lista.map(s => <TarjetaSugerencia key={s.id} s={s} onRevisada={revisada} />)
+        : (
+          <ul className={`${tarjeta} divide-y divide-[#1e1e22]`}>
+            {lista.map(s => (
+              <li key={s.id} className="py-3 text-sm">
+                <p className="font-medium text-[#f4f4f5]">{s.titulo}</p>
+                <p className="text-xs text-[#8b8b93] mt-0.5">{s.autor} · revisada {fechaHora(s.revisada_en)}</p>
+                <p className="text-xs text-[#a1a1aa] mt-1 whitespace-pre-line">{s.contenido}</p>
+                {s.motivo && <p className="text-xs text-red-400 mt-1">Motivo: {s.motivo}</p>}
+              </li>
+            ))}
+          </ul>
+        )}
+    </div>
+  )
+}
+
 // ── Usuarios (ADMIN) ──────────────────────────────────────────────────────────
 
 const USUARIO_VACIO = { nombre: '', email: '', rol: 'MIEMBRO', password: '' }
@@ -356,7 +455,8 @@ export default function Panel({ usuario }) {
   const tabs = [
     { id: 'resumen', label: 'Resumen' },
     { id: 'fuentes', label: 'Fuentes' },
-    ...(esAdmin ? [{ id: 'usuarios', label: 'Usuarios' }] : []),
+    { id: 'sugerencias', label: 'Sugerencias' },
+    ...(esAdmin ? [{ id: 'horarios', label: 'Horarios' }, { id: 'usuarios', label: 'Usuarios' }] : []),
   ]
   const [tab, setTab] = useState('resumen')
 
@@ -375,9 +475,11 @@ export default function Panel({ usuario }) {
         </div>
       </div>
       <div className="flex-1 overflow-y-auto p-6">
-        <div className="max-w-3xl mx-auto">
+        <div className={`${tab === 'horarios' ? 'max-w-6xl' : 'max-w-3xl'} mx-auto`}>
           {tab === 'resumen' && <Resumen />}
           {tab === 'fuentes' && <Fuentes esAdmin={esAdmin} />}
+          {tab === 'sugerencias' && <Sugerencias />}
+          {tab === 'horarios' && esAdmin && <GrillaHorarios />}
           {tab === 'usuarios' && esAdmin && <Usuarios yo={usuario.id} />}
         </div>
       </div>

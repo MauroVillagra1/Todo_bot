@@ -15,9 +15,10 @@ import re
 from collections import defaultdict
 from datetime import date
 
-from sqlalchemy import exists
+from sqlalchemy import and_, exists, or_
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.ingest.horarios import NOMBRE_DIA, normalizar, normalizar_comision, normalizar_materia
 from app.models.horario import HorarioClase
 from app.models.informacion import EstadoInformacionEnum as E, Evidencia, Informacion
@@ -139,8 +140,11 @@ def _filtros(pregunta: str) -> dict:
     }
 
 
-def _vigentes(db: Session):
-    """Bloques de PDFs vigentes cuya información no está desactualizada."""
+def vigentes(db: Session):
+    """
+    Bloques de PDFs vigentes cuya información no está desactualizada, más los
+    cargados a mano por un ADMIN (sin documento). Devuelve (HorarioClase, Documento | None).
+    """
     vigente = exists().where(
         Evidencia.documento_id == Documento.id,
         Evidencia.informacion_id == Informacion.id,
@@ -148,9 +152,26 @@ def _vigentes(db: Session):
     )
     return (
         db.query(HorarioClase, Documento)
-        .join(Documento, Documento.id == HorarioClase.documento_id)
-        .filter(Documento.vigente.is_(True), vigente)
+        .outerjoin(Documento, Documento.id == HorarioClase.documento_id)
+        .filter(or_(HorarioClase.documento_id.is_(None), and_(Documento.vigente.is_(True), vigente)))
     )
+
+
+def _fecha(d: Documento):
+    return d.fecha_publicacion or d.fecha_captura
+
+
+def mas_recientes(filas: list[tuple]) -> list[tuple]:
+    """
+    Si la misma comisión/período aparece en varios PDFs, vale el más reciente.
+    Los bloques cargados a mano (sin documento) siempre quedan.
+    """
+    mas_reciente: dict[tuple, Documento] = {}
+    for h, d in filas:
+        clave = (h.plan, h.comision, h.periodo)
+        if d is not None and (clave not in mas_reciente or _fecha(d) > _fecha(mas_reciente[clave])):
+            mas_reciente[clave] = d
+    return [(h, d) for h, d in filas if d is None or mas_reciente[(h.plan, h.comision, h.periodo)].id == d.id]
 
 
 def _materias_de(db: Session, pregunta: str) -> list[str]:
@@ -256,7 +277,7 @@ def responder_horario(db: Session, pregunta: str, anterior: str = "", hoy: date 
     if len(grupos) > 1 and not f["comisiones"] and not docentes:
         return _aclaracion(db, grupos)
 
-    consulta = _vigentes(db)
+    consulta = vigentes(db)
     if f["comisiones"]:
         consulta = consulta.filter(HorarioClase.comision.in_(f["comisiones"]))
     if materias:
@@ -282,16 +303,8 @@ def responder_horario(db: Session, pregunta: str, anterior: str = "", hoy: date 
     if not filas:
         return None
 
-    # Si la misma comisión/período aparece en varios PDFs, vale el más reciente
-    def fecha(d: Documento):
-        return d.fecha_publicacion or d.fecha_captura
-
-    mas_reciente: dict[tuple, Documento] = {}
-    for h, d in filas:
-        clave = (h.plan, h.comision, h.periodo)
-        if clave not in mas_reciente or fecha(d) > fecha(mas_reciente[clave]):
-            mas_reciente[clave] = d
-    filas = [(h, d) for h, d in filas if mas_reciente[(h.plan, h.comision, h.periodo)].id == d.id]
+    filas = mas_recientes(filas)
+    fecha = _fecha
 
     # Si una comisión figura en dos planes (2008 y 2023), se muestra el más nuevo,
     # salvo que se pida un plan. Si la materia solo existe en el plan viejo, queda.
@@ -308,9 +321,12 @@ def responder_horario(db: Session, pregunta: str, anterior: str = "", hoy: date 
     for h, _ in filas:
         grupos[(h.plan or "", h.comision or "", h.periodo or "", h.turno or "", h.aula or "")].append(h)
 
-    docs = sorted({d.id: d for _, d in filas}.values(), key=lambda d: d.id)
-    numero = {d.id: i for i, d in enumerate(docs, 1)}
-    doc_de = {h.id: d for h, d in filas}
+    docs = sorted({d.id: d for _, d in filas if d is not None}.values(), key=lambda d: d.id)
+    numero: dict[int | None, int] = {d.id: i for i, d in enumerate(docs, 1)}
+    hay_manuales = any(d is None for _, d in filas)
+    if hay_manuales:
+        numero[None] = len(docs) + 1  # bloques cargados a mano en el panel
+    doc_de = {h.id: (d.id if d else None) for h, d in filas}
 
     # Una materia puede venir escrita distinto ("Analisis Matematico I" / "Análisis Matemático I"):
     # se agrupa por su forma normalizada y se muestra la grafía más común (con tildes si empata)
@@ -337,7 +353,7 @@ def responder_horario(db: Session, pregunta: str, anterior: str = "", hoy: date 
     for (plan, comision, periodo, turno, aula), bloques in sorted(grupos.items(), key=lambda g: (g[0][1], g[0][0])):
         datos = ", ".join(x for x in (f"Plan {plan}" if plan else "", periodo, f"turno {turno.lower()}" if turno else "",
                                       f"aula {aula}" if aula else "") if x)
-        cita = f"[{numero[doc_de[bloques[0].id].id]}]"
+        cita = " ".join(f"[{n}]" for n in sorted({numero[doc_de[b.id]] for b in bloques}))
         lineas.append(f"**{comision or 'Sin comisión'}** ({datos}) {cita}")
         for b in sorted(bloques, key=lambda b: (b.dia, b.inicio)):
             extra = "".join(x for x in (f" (electiva)" if b.electiva else "",
@@ -370,6 +386,11 @@ def responder_horario(db: Session, pregunta: str, anterior: str = "", hoy: date 
         }
         for d in docs
     ]
+    if hay_manuales:
+        fuentes.append({
+            "numero": numero[None], "titulo": "Horarios cargados por la administración", "url": get_settings().SITE_URL,
+            "fuente": "UTNIA", "fecha": None, "estado": "CONFIRMADA",
+        })
     fechas = [x["fecha"] for x in fuentes if x["fecha"]]
     return {
         "respuesta": "\n".join(lineas).strip(),

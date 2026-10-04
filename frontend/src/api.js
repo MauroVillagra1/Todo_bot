@@ -102,4 +102,54 @@ export async function actualizarUsuario(id, cambios) {
   return data
 }
 
+// ── Sugerencias ───────────────────────────────────────────────────────────────
+
+/** Cualquier usuario propone un dato; queda PENDIENTE hasta que un MOD lo revise. */
+export async function crearSugerencia(payload) {
+  const { data } = await api.post('/api/v1/sugerencias/', payload)  // { titulo, contenido, url? }
+  return data
+}
+
+export async function misSugerencias() {
+  const { data } = await api.get('/api/v1/sugerencias/mias')
+  return data  // [{ id, titulo, contenido, url, estado, motivo, creada_en, revisada_en, informacion_estado }]
+}
+
+/** MOD y ADMIN */
+export async function listarSugerencias(estado = 'PENDIENTE') {
+  const { data } = await api.get(`/api/v1/sugerencias/?estado=${estado}`)
+  return data
+}
+
+export async function aceptarSugerencia(id, cambios = {}) {
+  const { data } = await api.post(`/api/v1/sugerencias/${id}/aceptar`, cambios)  // { titulo?, contenido? }
+  return data
+}
+
+export async function rechazarSugerencia(id, motivo) {
+  const { data } = await api.post(`/api/v1/sugerencias/${id}/rechazar`, { motivo })
+  return data
+}
+
+// ── Grilla de horarios (solo ADMIN) ───────────────────────────────────────────
+
+export async function listarHorarios() {
+  const { data } = await api.get('/api/v1/horarios/')
+  return data  // [{ id, comision, anio, plan, turno, periodo, aula, dia, inicio, fin, materia, docente, lugar, electiva, origen }]
+}
+
+export async function crearBloque(payload) {
+  const { data } = await api.post('/api/v1/horarios/', payload)
+  return data
+}
+
+export async function actualizarBloque(id, cambios) {
+  const { data } = await api.patch(`/api/v1/horarios/${id}`, cambios)
+  return data
+}
+
+export async function borrarBloque(id) {
+  await api.delete(`/api/v1/horarios/${id}`)
+}
+
 export default api

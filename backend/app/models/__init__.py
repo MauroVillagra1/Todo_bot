@@ -11,6 +11,7 @@ from app.models.informacion import Evidencia, Historial, Informacion, Verificaci
 from app.models.cache import CacheRespuesta
 from app.models.horario import HorarioClase
 from app.models.codigo import CodigoVerificacion
+from app.models.sugerencia import Sugerencia
 
 __all__ = [
     "Usuario",
@@ -28,4 +29,5 @@ __all__ = [
     "Historial",
     "CacheRespuesta",
     "HorarioClase",
+    "Sugerencia",
 ]

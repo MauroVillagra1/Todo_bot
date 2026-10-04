@@ -1,12 +1,13 @@
 /**
  * Chat — pantalla principal del asistente UTNIA.
- * Incluye sidebar con navegación Chat/Panel para staff y admin.
+ * Incluye sidebar con navegación Chat / Sugerir dato (todos) / Panel (staff y admin).
  */
 import { useState, useRef, useEffect } from 'react'
-import { Send, LogOut, Sparkles, User, LayoutDashboard, MessageSquare } from 'lucide-react'
+import { Send, LogOut, Sparkles, User, LayoutDashboard, MessageSquare, Lightbulb } from 'lucide-react'
 import { enviarMensaje as apiEnviarMensaje } from '../api'
 import MensajeBurbuja from './MensajeBurbuja'
 import Panel from './Panel'
+import Sugerir from './Sugerir'
 
 const ROLES_DISPLAY = {
   ADMIN:   { label: 'Admin',     color: 'bg-[#e8592e]/15 text-[#f2894f]' },
@@ -49,7 +50,7 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
   const [input, setInput]                   = useState('')
   const [escribiendo, setEscribiendo]       = useState(false)
   const [conversacionId, setConversacionId] = useState(null)
-  const [vista, setVista]                   = useState('chat') // 'chat' | 'panel'
+  const [vista, setVista]                   = useState('chat') // 'chat' | 'sugerir' | 'panel'
   const bottomRef                            = useRef(null)
   const inputRef                             = useRef(null)
 
@@ -155,35 +156,29 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
           <span className="hidden md:block">Nueva consulta</span>
         </button>
 
-        {/* Nav Chat / Panel — solo para staff */}
-        {tienePanel && (
-          <nav className="flex flex-col gap-1 px-3 mb-4">
+        {/* Nav: Chat y Sugerir para todos; Panel solo para staff */}
+        <nav className="flex flex-col gap-1 px-3 mb-4">
+          {[
+            { id: 'chat', label: 'Chat', Icono: MessageSquare },
+            { id: 'sugerir', label: 'Sugerir dato', Icono: Lightbulb },
+            ...(tienePanel ? [{ id: 'panel', label: 'Panel', Icono: LayoutDashboard }] : []),
+          ].map(({ id, label, Icono }) => (
             <button
-              onClick={() => setVista('chat')}
+              key={id}
+              onClick={() => setVista(id)}
+              title={label}
               className={`flex items-center justify-center md:justify-start gap-2 px-3 py-2 rounded-lg
                           text-sm font-body font-medium transition-colors ${
-                vista === 'chat'
+                vista === id
                   ? 'bg-[#e8592e]/15 text-[#f2894f]'
                   : 'text-[#8b8b93] hover:text-[#f4f4f5] hover:bg-[#17171b]'
               }`}
             >
-              <MessageSquare size={15} className="flex-shrink-0" />
-              <span className="hidden md:block">Chat</span>
+              <Icono size={15} className="flex-shrink-0" />
+              <span className="hidden md:block">{label}</span>
             </button>
-            <button
-              onClick={() => setVista('panel')}
-              className={`flex items-center justify-center md:justify-start gap-2 px-3 py-2 rounded-lg
-                          text-sm font-body font-medium transition-colors ${
-                vista === 'panel'
-                  ? 'bg-[#e8592e]/15 text-[#f2894f]'
-                  : 'text-[#8b8b93] hover:text-[#f4f4f5] hover:bg-[#17171b]'
-              }`}
-            >
-              <LayoutDashboard size={15} className="flex-shrink-0" />
-              <span className="hidden md:block">Panel</span>
-            </button>
-          </nav>
-        )}
+          ))}
+        </nav>
 
         <div className="flex-1" />
 
@@ -217,6 +212,10 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
       {vista === 'panel' && tienePanel ? (
         <div className="flex-1 overflow-hidden">
           <Panel usuario={usuario} darkMode />
+        </div>
+      ) : vista === 'sugerir' ? (
+        <div className="flex-1 overflow-hidden">
+          <Sugerir />
         </div>
       ) : (
         /* ── Área de chat ─────────────────────────────────────────────── */
