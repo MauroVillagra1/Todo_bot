@@ -91,6 +91,24 @@ class Settings(BaseSettings):
             return [origin.strip() for origin in v.split(",")]
         return v
 
+    # Un valor mal cargado en el panel de Vercel no debe tirar abajo toda la API
+    @field_validator("SMTP_PORT", mode="before")
+    @classmethod
+    def parse_smtp_port(cls, v):
+        v = str(v).strip().strip('"\'')
+        return int(v) if v.isdigit() else 465
+
+    @field_validator("SMTP_HOST", "SMTP_USUARIO", "SMTP_REMITENTE", mode="before")
+    @classmethod
+    def sin_espacios_ni_comillas(cls, v):
+        return str(v).strip().strip('"\'') if v is not None else ""
+
+    @field_validator("SMTP_PASSWORD", mode="before")
+    @classmethod
+    def password_de_aplicacion(cls, v):
+        """Google muestra la contraseña de aplicación como 'abcd efgh ijkl mnop': los espacios sobran."""
+        return "".join(str(v).split()).strip('"\'') if v is not None else ""
+
     @property
     def is_development(self) -> bool:
         return self.ENVIRONMENT == "development"
