@@ -91,8 +91,10 @@ def diagnostico(_admin=Depends(require_admin)):
     resultado = {
         "entorno": settings.ENVIRONMENT,
         "openrouter_key_configurada": bool(settings.OPENROUTER_API_KEY.strip()),
-        "ai_model": settings.AI_MODEL,
-        "modelos_respaldo": settings.AI_MODELOS_RESPALDO,
+        "groq_key_configurada": bool(settings.GROQ_API_KEY.strip()),
+        "gemini_key_configurada": bool(settings.GEMINI_API_KEY.strip()),
+        "cadena_de_modelos": [f"{p}/{m}" for p, m in llm.cadena_de_modelos()],
+        "whatsapp_configurado": bool(settings.WHATSAPP_APP_SECRET and settings.WHATSAPP_VERIFY_TOKEN),
     }
     try:
         # Prueba mínima (unos pocos tokens de un modelo gratuito)

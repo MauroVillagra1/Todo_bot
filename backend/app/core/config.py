@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     # Siempre se prueban después de AI_MODEL: si AI_MODEL deja de existir, el chat sigue andando
     AI_MODELOS_RESPALDO: List[str] = ["qwen/qwen3.8-27b:free", "google/gemma-4-26b-a4b-it:free"]
 
+    # Otros proveedores gratuitos de respaldo ("proveedor|modelo"), en orden.
+    # Sin su API key se saltean. Ver services/llm.py.
+    AI_PROVEEDORES: List[str] = []
+    GROQ_API_KEY: str = ""
+    GEMINI_API_KEY: str = ""
+
     # Horas que una respuesta del chat queda en caché (se invalida sola si cambian los datos)
     CACHE_TTL_HORAS: int = 6
 
@@ -57,7 +63,15 @@ class Settings(BaseSettings):
     # Solo se pueden crear cuentas (y loguearse) con estos dominios de correo
     DOMINIOS_PERMITIDOS: List[str] = ["alu.frt.utn.edu.ar"]
 
-    @field_validator("CORS_ORIGINS", "DOMINIOS_PERMITIDOS", mode="before")
+    # ── WhatsApp (Cloud API oficial): reenvíos de posteos de canales al número del bot ──
+    WHATSAPP_VERIFY_TOKEN: str = ""   # palabra secreta elegida al conectar el webhook en Meta
+    WHATSAPP_APP_SECRET: str = ""     # "Clave secreta de la app" de Meta: verifica la firma
+    WHATSAPP_REENVIADORES: List[str] = []  # números autorizados a reenviar (solo dígitos)
+    WHATSAPP_FUENTE: str = ""          # fuente donde se guardan; vacío = la primera de WhatsApp
+
+    @field_validator(
+        "CORS_ORIGINS", "DOMINIOS_PERMITIDOS", "AI_PROVEEDORES", "WHATSAPP_REENVIADORES", mode="before"
+    )
     @classmethod
     def parse_cors_origins(cls, v):
         """Acepta lista JSON ["url1","url2"] o string separado por comas desde el .env."""

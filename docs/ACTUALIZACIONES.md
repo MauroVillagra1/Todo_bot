@@ -170,6 +170,21 @@ https://sistemasfrtutn.ar/wp-json/wp/v2/media?mime_type=application/pdf&modified
 
 Lo cargado a mano pasa por el **mismo circuito** que lo automático: hash, versionado si se vuelve a cargar el mismo link con otro texto, chunks y verificación. El estado depende de la confiabilidad de la fuente: 100% → CONFIRMADA, 90% → PROBABLE, 50% → NO_CONFIRMADA.
 
+### WhatsApp por reenvío al número del bot (API oficial, costo 0)
+
+Leer canales automáticamente desde un WhatsApp personal solo se puede con herramientas no oficiales, que violan los términos de Meta y arriesgan el número. La forma permitida:
+
+1. El bot tiene su propio número: el **número de prueba gratuito** que da Meta al crear la app. No necesita chip.
+2. Cuando un canal publica, **reenviás el posteo** desde tu WhatsApp al contacto del bot (un toque).
+3. Meta llama a `POST /api/v1/webhooks/whatsapp`. Se verifica la firma, se aceptan **solo números autorizados** y el texto (o el pie de la foto) entra como NO CONFIRMADA.
+4. Si el mismo posteo se reenvía dos veces, se descarta por su texto.
+
+Configuración (una vez):
+- Meta Business + app en developers.facebook.com con el producto **WhatsApp**.
+- Variables en Vercel (`back-bot`): `WHATSAPP_APP_SECRET` (Configuración → Básica → Clave secreta), `WHATSAPP_VERIFY_TOKEN` (palabra inventada) y `WHATSAPP_REENVIADORES` (tu número, solo dígitos, ej. `["5493815551111"]`).
+- En la app de Meta → WhatsApp → Configuración → Webhook: URL `https://back-bot-6icc.vercel.app/api/v1/webhooks/whatsapp`, el mismo verify token, y suscribirse a **messages**.
+- Con el número de prueba hay que agregar tu número como destinatario permitido en la app.
+
 ### Activar Instagram automático (opcional, costo 0)
 
 1. El dueño de la cuenta (que debe ser **profesional**, Business o Creator) autoriza una app de Meta y genera un **token de larga duración**.
