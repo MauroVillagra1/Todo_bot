@@ -166,6 +166,16 @@ No hay registro público ni seeds con contraseñas. Las cuentas se crean así:
 
 Solo se aceptan emails de `DOMINIOS_PERMITIDOS` (por defecto `@alu.frt.utn.edu.ar`). Roles: `MIEMBRO`, `MOD`, `ADMIN`.
 
+## Desplegar a producción
+
+Vercel (API) despliega desde el repo **Back-bot** y Netlify (web) desde **Front-bot**, en la rama `master`. Después de hacer commit en Todo_bot:
+
+```bash
+bash scripts/desplegar.sh
+```
+
+El script copia `backend/` y `frontend/` del último commit a esos repos y los sube, sin force-push y nunca con un `.env`. Si se aplicaron migraciones nuevas, primero hay que correrlas contra Neon (`cd backend && alembic upgrade head`).
+
 ## Tests
 
 ```bash

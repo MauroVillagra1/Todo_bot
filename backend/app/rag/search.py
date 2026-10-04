@@ -17,30 +17,44 @@ MAX_RESULTADOS = 5
 MAX_CHUNKS_POR_INFORMACION = 2
 PUNTAJE_MINIMO = 0.01
 
+# Proporción mínima de palabras de la pregunta que deben aparecer en el chunk.
+# Sin esto, "¿Quién ganó el mundial?" traía "Paz Mundial" o "Logo ganador".
+COBERTURA_MINIMA = 0.6
+
 _SQL = text("""
-WITH q AS (
-    SELECT to_tsquery('spanish', string_agg(quote_literal(lexeme) || ':*', ' | ')) AS tsq
-    FROM unnest(to_tsvector('spanish', :pregunta))
+WITH lex AS (
+    SELECT lexeme FROM unnest(to_tsvector('spanish', :pregunta))
+), q AS (
+    SELECT to_tsquery('spanish', string_agg(quote_literal(lexeme) || ':*', ' | ')) AS tsq,
+           count(*) AS n
+    FROM lex
+), candidatos AS (
+    SELECT c.*, q.tsq, q.n,
+           (SELECT count(*) FROM lex
+             WHERE c.tsv @@ to_tsquery('spanish', quote_literal(lex.lexeme) || ':*')) AS coinciden
+    FROM q JOIN chunks c ON c.tsv @@ q.tsq
 )
 SELECT c.id AS chunk_id, i.id AS informacion_id,
        coalesce(p.titulo, d.nombre) AS titulo, c.texto, coalesce(p.url, d.url) AS url,
        f.nombre AS fuente,
-       coalesce(p.fecha_modificacion, p.fecha_publicacion, d.fecha_publicacion, d.fecha_captura) AS fecha,
+       -- Fecha de publicación: muchas "modificaciones" son ediciones masivas del sitio
+       coalesce(p.fecha_publicacion, p.fecha_modificacion, d.fecha_publicacion, d.fecha_captura) AS fecha,
        i.estado::text AS estado, i.tipo::text AS tipo,
-       ts_rank(c.tsv, q.tsq)
+       ts_rank(c.tsv, c.tsq)
+         * power(c.coinciden::float / c.n, 2)
          * CASE i.estado::text
              WHEN 'CONFIRMADA' THEN 1.0 WHEN 'PROBABLE' THEN 0.8
              WHEN 'NO_CONFIRMADA' THEN 0.5 ELSE 0.25 END
          * CASE WHEN i.tipo::text = :tipo THEN 1.5 ELSE 1.0 END AS puntaje
-FROM q
-JOIN chunks c ON c.tsv @@ q.tsq
+FROM candidatos c
 -- Un chunk viene de una publicación (post/página) o de un documento (PDF)
 LEFT JOIN publicaciones p ON p.id = c.publicacion_id
 LEFT JOIN documentos d ON d.id = c.documento_id
 JOIN evidencias e ON e.publicacion_id = p.id OR e.documento_id = d.id
 JOIN informaciones i ON i.id = e.informacion_id AND i.estado::text NOT IN ('REEMPLAZADA')
 JOIN fuentes f ON f.id = coalesce(p.fuente_id, d.fuente_id)
-WHERE q.tsq IS NOT NULL AND coalesce(p.vigente, d.vigente)
+WHERE coalesce(p.vigente, d.vigente)
+  AND c.coinciden >= greatest(1, ceil(c.n * :cobertura))
 ORDER BY puntaje DESC, fecha DESC NULLS LAST
 LIMIT :limite
 """)
@@ -63,7 +77,8 @@ def buscar(db: Session, pregunta: str, max_resultados: int = MAX_RESULTADOS) -> 
     tipo, ambiguo = clasificar(pregunta, "")
     filas = db.execute(
         _SQL,
-        {"pregunta": pregunta, "tipo": "" if ambiguo else tipo.value, "limite": max_resultados * 4},
+        {"pregunta": pregunta, "tipo": "" if ambiguo else tipo.value, "limite": max_resultados * 4,
+         "cobertura": COBERTURA_MINIMA},
     ).mappings().all()
 
     resultados: list[Resultado] = []
