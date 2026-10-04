@@ -17,6 +17,7 @@ for ($i = 0; $i -lt 30; $i++) {
 
 $env:IG_INSTALOADER = "1"
 $env:PYTHONIOENCODING = "utf-8"
+$env:ENVIRONMENT = "production"  # sin el eco de SQL de desarrollo
 Escribir "Inicio (sesión de Instagram: $(if ($env:IG_SESION) { $env:IG_SESION } else { 'ninguna' }))"
 Set-Location $backend
 python scripts/run_ingest.py --tipo INSTAGRAM 2>&1 | ForEach-Object { Escribir $_ }
