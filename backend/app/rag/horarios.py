@@ -5,6 +5,7 @@ Entiende preguntas como:
   "¿Cuándo se dicta Análisis Matemático I?"      → esa materia en todas las comisiones
   "¿Qué tiene la 2K03 los jueves?"                → grilla de la comisión, filtrada por día
   "¿Quién da Redes de Datos en la 4k2?"           → materia + comisión (con docente)
+  "¿Qué materias da Moyano?"                      → todas las clases de ese docente
   "¿Qué electivas hay en 4º año a la noche?"      → electivas filtradas por año y turno
 
 Si la pregunta no es de horarios (o no se encuentra nada), devuelve None y
@@ -12,6 +13,7 @@ sigue el RAG normal.
 """
 import re
 from collections import defaultdict
+from datetime import date
 
 from sqlalchemy import exists
 from sqlalchemy.orm import Session
@@ -80,6 +82,8 @@ def _filtros(pregunta: str) -> dict:
         "plan": (m.group(1) if (m := re.search(r"plan\s*(20\d\d)", n)) else None),
         "anio": anio,
         "electivas": bool(palabras & {"electiva", "electivas"}),
+        "periodo": ("Primer cuatrimestre" if re.search(r"\b(primer|1er|1)\s*cuatri", n)
+                    else "Segundo cuatrimestre" if re.search(r"\b(segundo|2do|2)\s*cuatri", n) else None),
         "es_horario": bool(palabras & PALABRAS_HORARIO),
     }
 
@@ -108,9 +112,39 @@ def _materias_de(db: Session, pregunta: str) -> list[str]:
     return [m for m, p in puntajes.items() if p >= mejor - 0.15]
 
 
-def responder_horario(db: Session, pregunta: str, anterior: str = "") -> dict | None:
+def _personas(docente: str) -> list[str]:
+    """'Vicente Francisco - Chibilisco Vicente' → dos personas (normalizadas)."""
+    partes = re.split(r"\s+-\s+|,\s*|\s+y\s+", normalizar(docente))
+    return [limpia for p in partes if (limpia := p.strip(" -–.,"))]
+
+
+def _docentes_de(db: Session, pregunta: str) -> list[str]:
+    """
+    Personas nombradas en la pregunta (apellido y/o nombre), comparando con los
+    docentes que figuran en los horarios. Todas las palabras de nombre que se
+    reconocen en la pregunta tienen que estar en la misma persona.
+    """
+    personas = {p for (d,) in db.query(HorarioClase.docente).filter(HorarioClase.docente.isnot(None)).distinct()
+                for p in _personas(d)}
+    vocabulario = {t for p in personas for t in p.split() if len(t) >= 3}
+    preg = [t for t in re.findall(r"[a-z]+", normalizar(pregunta))
+            if len(t) >= 3 and t not in VACIAS and t not in PALABRAS_HORARIO and t not in DIAS]
+    nombres = [t for t in preg if t in vocabulario]
+    if not nombres:
+        return []
+    return sorted(p for p in personas if all(n in p.split() for n in nombres))
+
+
+def cuatrimestre_terminado(hoy: date | None = None) -> str:
+    """El cuatrimestre que no está en curso: de agosto a diciembre ya pasó el primero."""
+    hoy = hoy or date.today()
+    return "Primer cuatrimestre" if hoy.month >= 8 else "Segundo cuatrimestre"
+
+
+def responder_horario(db: Session, pregunta: str, anterior: str = "", hoy: date | None = None) -> dict | None:
     f = _filtros(pregunta)
     materias = _materias_de(db, pregunta)
+    docentes = _docentes_de(db, pregunta) if not materias else []
     # Seguimiento ("¿y los martes?"): comisión/materia de la pregunta anterior
     if anterior and not f["comisiones"] and not materias:
         previo = _filtros(anterior)
@@ -118,7 +152,7 @@ def responder_horario(db: Session, pregunta: str, anterior: str = "") -> dict | 
         materias = _materias_de(db, anterior)
         f["es_horario"] = f["es_horario"] or previo["es_horario"]
 
-    if not (f["comisiones"] or materias or (f["electivas"] and (f["anio"] or f["turno"]))):
+    if not (f["comisiones"] or materias or docentes or (f["electivas"] and (f["anio"] or f["turno"]))):
         return None
     if not f["es_horario"] and not f["comisiones"]:
         return None  # "¿Hay becas para sistemas de información?" no es de horarios
@@ -139,6 +173,13 @@ def responder_horario(db: Session, pregunta: str, anterior: str = "") -> dict | 
     filas = consulta.all()
     if f["turno"]:
         filas = [(h, d) for h, d in filas if h.turno and f["turno"] in h.turno.lower()]
+    if docentes:
+        filas = [(h, d) for h, d in filas if h.docente and set(_personas(h.docente)) & set(docentes)]
+    # Cuatrimestre: el pedido, o si no se pide, se ocultan los horarios del que no está en curso
+    if f["periodo"]:
+        filas = [(h, d) for h, d in filas if h.periodo in (f["periodo"], "Anual", None)]
+    else:
+        filas = [(h, d) for h, d in filas if h.periodo != cuatrimestre_terminado(hoy)]
     if not filas:
         return None
 
@@ -157,12 +198,11 @@ def responder_horario(db: Session, pregunta: str, anterior: str = "") -> dict | 
     # salvo que se pida un plan. Si la materia solo existe en el plan viejo, queda.
     planes_omitidos = set()
     if not f["plan"]:
-        plan_nuevo: dict[tuple, str] = {}
+        plan_nuevo: dict[str | None, str] = {}
         for h, _ in filas:
-            clave = (h.comision, h.periodo)
-            plan_nuevo[clave] = max(plan_nuevo.get(clave, ""), h.plan or "")
-        planes_omitidos = {h.plan for h, _ in filas if (h.plan or "") != plan_nuevo[(h.comision, h.periodo)]}
-        filas = [(h, d) for h, d in filas if (h.plan or "") == plan_nuevo[(h.comision, h.periodo)]]
+            plan_nuevo[h.comision] = max(plan_nuevo.get(h.comision, ""), h.plan or "")
+        planes_omitidos = {h.plan for h, _ in filas if (h.plan or "") != plan_nuevo[h.comision]}
+        filas = [(h, d) for h, d in filas if (h.plan or "") == plan_nuevo[h.comision]]
 
     # Agrupar por comisión (y plan/período), ordenado por día y hora
     grupos: dict[tuple, list[HorarioClase]] = defaultdict(list)
@@ -182,11 +222,15 @@ def responder_horario(db: Session, pregunta: str, anterior: str = "") -> dict | 
         norma: max(cuenta, key=lambda g: (cuenta[g], sum(not c.isascii() for c in g)))
         for norma, cuenta in grafias.items()
     }
-    varias_materias = len(nombre_de) > 1 or f["electivas"]
+    varias_materias = len(nombre_de) > 1 or f["electivas"] or bool(docentes)
 
     titulo = "Horarios"
     if materias:
         titulo += " de " + " / ".join(f"**{n}**" for n in sorted(nombre_de.values())[:3])
+    elif docentes:
+        titulo = "Clases de " + " / ".join(f"**{p.title()}**" for p in docentes[:3])
+        if len(docentes) > 3:
+            titulo += f" (y {len(docentes) - 3} docentes más con ese nombre)"
     if f["dias"]:
         titulo += " (" + ", ".join(NOMBRE_DIA[d] for d in sorted(f["dias"])) + ")"
     lineas = [f"{titulo}, según los horarios publicados por el Departamento de Sistemas:", ""]

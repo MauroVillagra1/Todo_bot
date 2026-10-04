@@ -2,7 +2,7 @@
 Preguntas de horarios respondidas con SQL (sin LLM), sobre el PDF real de 4º año
 (plan 2023, 2º cuatrimestre 2026).
 """
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -15,6 +15,11 @@ from app.models.ingesta import Documento, Fuente, TipoDocumentoEnum, TipoFuenteE
 from app.rag.horarios import responder_horario
 
 PDF = Path(__file__).parent / "fixtures" / "HORARIO-4-ANO-PLAN-2023.pdf"
+OCTUBRE = date(2026, 10, 4)  # segundo cuatrimestre en curso
+
+
+def responder(db, pregunta, anterior="", hoy=OCTUBRE):
+    return responder_horario(db, pregunta, anterior, hoy=hoy)
 
 
 @pytest.fixture(scope="module")
@@ -73,7 +78,7 @@ def test_normalizar_comision(texto, esperado):
 # ── Respuestas con SQL ────────────────────────────────────────────────────────
 
 def test_materia_en_todas_las_comisiones(base):
-    r = responder_horario(base, "¿Cuándo se dicta Redes de Datos?")
+    r = responder(base, "¿Cuándo se dicta Redes de Datos?")
     for comision in ("4K01", "4K02", "4K03"):
         assert f"**{comision}**" in r["respuesta"]
     assert "Lunes 16:15 a 18:30: Moyano Alberto — Lab. 154" in r["respuesta"]
@@ -83,25 +88,25 @@ def test_materia_en_todas_las_comisiones(base):
 
 
 def test_comision_con_formato_corto_y_dia(base):
-    r = responder_horario(base, "¿Qué materias tiene la 4k1 los lunes?")
+    r = responder(base, "¿Qué materias tiene la 4k1 los lunes?")
     assert "Administración de Sistemas de Información" in r["respuesta"]
     assert "Redes de Datos" in r["respuesta"]
     assert "Martes" not in r["respuesta"] and "4K02" not in r["respuesta"]
 
 
 def test_abreviaturas_y_docente(base):
-    r = responder_horario(base, "¿quién da ingenieria y calidad de soft en la 4K02?")
+    r = responder(base, "¿quién da ingenieria y calidad de soft en la 4K02?")
     assert "Chibilisco Vicente" in r["respuesta"] and "Vicente Francisco" in r["respuesta"]
     assert "4K01" not in r["respuesta"]
 
 
 def test_electivas_por_turno(base):
-    r = responder_horario(base, "¿Qué electivas hay a la noche?")
+    r = responder(base, "¿Qué electivas hay a la noche?")
     assert "FUNDAMENTOS DE INGENIERIA DE DATOS" in r["respuesta"]
 
 
 def test_seguimiento_usa_la_comision_anterior(base):
-    r = responder_horario(base, "¿y los viernes?", anterior="¿Qué tiene la 4K01 los lunes?")
+    r = responder(base, "¿y los viernes?", anterior="¿Qué tiene la 4K01 los lunes?")
     assert "**4K01**" in r["respuesta"] and "Viernes" in r["respuesta"] and "Lunes" not in r["respuesta"]
 
 
@@ -111,7 +116,7 @@ def test_seguimiento_usa_la_comision_anterior(base):
     "¿Cuándo se dicta Análisis Matemático II?",  # no está en este PDF → sigue el RAG
 ])
 def test_preguntas_que_no_son_de_horarios_siguen_el_rag(base, pregunta):
-    assert responder_horario(base, pregunta) is None
+    assert responder(base, pregunta) is None
 
 
 def _copia_plan_2008(db, materia="Redes de Información"):
@@ -128,20 +133,53 @@ def _copia_plan_2008(db, materia="Redes de Información"):
 
 def test_con_dos_planes_muestra_el_mas_nuevo_y_avisa(base):
     _copia_plan_2008(base)
-    r = responder_horario(base, "¿Qué tiene la 4K01 los lunes?")
+    r = responder(base, "¿Qué tiene la 4K01 los lunes?")
     assert "Plan 2023" in r["respuesta"] and "Plan 2008" not in r["respuesta"]
     assert "plan 2008" in r["respuesta"]  # aviso para quien cursa el plan viejo
-    viejo = responder_horario(base, "¿Qué tiene la 4K01 los lunes en el plan 2008?")
+    viejo = responder(base, "¿Qué tiene la 4K01 los lunes en el plan 2008?")
     assert "Plan 2008" in viejo["respuesta"] and "Redes de Información" in viejo["respuesta"]
 
 
 def test_materia_que_solo_existe_en_el_plan_viejo(base):
     _copia_plan_2008(base)
-    r = responder_horario(base, "¿Cuándo se dicta Redes de Información?")
+    r = responder(base, "¿Cuándo se dicta Redes de Información?")
     assert "Plan 2008" in r["respuesta"]
+
+
+def test_lo_que_tengo_un_dia_en_mi_comision(base):
+    r = responder(base, "¿Qué materias y en qué horario las tengo los lunes en la 4K01?")
+    assert "- Lunes 14:00 a 16:15: Administración de Sistemas de Información — Cordero Lucas" in r["respuesta"]
+    assert "- Lunes 16:15 a 18:30: Redes de Datos — Moyano Alberto — Lab. 154" in r["respuesta"]
+
+
+def test_materias_de_un_docente(base):
+    r = responder(base, "¿Qué materias da Moyano?")
+    assert "Clases de **Moyano Alberto**" in r["respuesta"]
+    assert "**4K01**" in r["respuesta"] and "**4K02**" in r["respuesta"]
+    assert "Redes de Datos" in r["respuesta"] and "Nazar" not in r["respuesta"]
+
+
+def test_docente_por_nombre_y_apellido_con_dia(base):
+    r = responder(base, "¿Patricia Nazar da clases los martes?")
+    assert "Nazar Patricia" in r["respuesta"] and "Martes" in r["respuesta"]
+    assert "Lunes" not in r["respuesta"]
+
+
+def test_docente_compartido_sin_guion(base):
+    from app.rag.horarios import _personas
+    assert _personas("Valdez Ocampo T, - Bedran Marisel") == ["valdez ocampo t", "bedran marisel"]
+    assert _personas("Vicente Francisco - Chibilisco Vicente") == ["vicente francisco", "chibilisco vicente"]
+
+
+def test_cuatrimestre_terminado_no_se_muestra(base):
+    # El fixture es del segundo cuatrimestre: en mayo (primero en curso) no aparece…
+    assert responder(base, "¿Qué tiene la 4K01 los lunes?", hoy=date(2026, 5, 4)) is None
+    # …salvo que se lo pida explícitamente
+    r = responder(base, "¿Qué tiene la 4K01 los lunes en el segundo cuatrimestre?", hoy=date(2026, 5, 4))
+    assert "Redes de Datos" in r["respuesta"]
 
 
 def test_horario_desactualizado_no_se_usa(base):
     base.query(Informacion).update({"estado": "DESACTUALIZADA"})
     base.commit()
-    assert responder_horario(base, "¿Cuándo se dicta Redes de Datos?") is None
+    assert responder(base, "¿Cuándo se dicta Redes de Datos?") is None
