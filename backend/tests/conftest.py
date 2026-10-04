@@ -37,6 +37,7 @@ def db():
     def _funciones_postgres(dbapi_conn, _):
         # chunks.tsv es una columna generada con to_tsvector (Postgres)
         dbapi_conn.create_function("to_tsvector", 2, lambda _cfg, texto: texto, deterministic=True)
+        dbapi_conn.create_function("sin_tildes", 1, lambda texto: texto, deterministic=True)
 
     Usuario.__table__.create(engine)
     Session = sessionmaker(bind=engine)

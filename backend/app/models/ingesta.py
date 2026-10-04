@@ -145,7 +145,7 @@ class Chunk(Base):
     # el stemmer reduce "examen"→"exam" pero "exámenes"→"examen", y sin prefijo no coinciden.
     tsv = mapped_column(
         TSVECTOR().with_variant(Text(), "sqlite"),  # SQLite solo en tests
-        Computed("to_tsvector('spanish', texto)", persisted=True),
+        Computed("to_tsvector('spanish', sin_tildes(texto))", persisted=True),
     )
     # La columna `embedding` (pgvector) se agrega en la etapa 7, solo si hace falta
 

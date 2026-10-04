@@ -30,6 +30,10 @@ PALABRAS_HORARIO = {
     "comisiones", "materia", "materias", "tiene", "tengo", "tienen", "profesor", "profesora", "profe",
     "docente", "docentes", "quien", "da", "dan", "electiva", "electivas", "turno", "lab", "laboratorio",
 }
+# Preguntas de exámenes ("¿cuándo rindo Física?"): van a la búsqueda de mesas, no a las grillas
+PALABRAS_EXAMEN = {
+    "rindo", "rendir", "rinde", "rinden", "rendimos", "mesa", "mesas", "final", "finales", "examen", "examenes",
+}
 VACIAS = {"de", "la", "el", "los", "las", "y", "del", "en", "a", "para", "que", "con", "un", "una", "e"}
 ROMANOS = {"1": "i", "2": "ii", "3": "iii", "4": "iv", "5": "v"}
 _ES_ROMANO = {"i", "ii", "iii", "iv", "v"}
@@ -131,6 +135,7 @@ def _filtros(pregunta: str) -> dict:
         "periodo": ("Primer cuatrimestre" if re.search(r"\b(primer|1er|1)\s*cuatri", n)
                     else "Segundo cuatrimestre" if re.search(r"\b(segundo|2do|2)\s*cuatri", n) else None),
         "es_horario": bool(palabras & PALABRAS_HORARIO),
+        "es_examen": bool(palabras & PALABRAS_EXAMEN),
     }
 
 
@@ -230,6 +235,8 @@ def cuatrimestre_terminado(hoy: date | None = None) -> str:
 
 def responder_horario(db: Session, pregunta: str, anterior: str = "", hoy: date | None = None) -> dict | None:
     f = _filtros(pregunta)
+    if f["es_examen"] and not f["comisiones"]:
+        return None
     materias = _materias_de(db, pregunta)
     docentes = _docentes_de(db, pregunta) if not materias else []
     # Seguimiento ("¿y los martes?"): comisión/materia de la pregunta anterior

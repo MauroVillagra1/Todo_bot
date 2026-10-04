@@ -87,6 +87,11 @@ def test_materia_en_todas_las_comisiones(base):
     assert r["fuentes"][0]["url"].endswith("HORARIO-4-ANO-PLAN-2023.pdf")
 
 
+def test_preguntas_de_examen_no_son_de_horarios(base):
+    assert responder(base, "¿Cuándo rindo Redes de Datos?") is None
+    assert responder(base, "mesa de final de Redes de Datos") is None
+
+
 def test_comision_con_formato_corto_y_dia(base):
     r = responder(base, "¿Qué materias tiene la 4k1 los lunes?")
     assert "Administración de Sistemas de Información" in r["respuesta"]

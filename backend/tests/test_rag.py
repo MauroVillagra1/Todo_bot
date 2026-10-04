@@ -174,3 +174,11 @@ def test_si_el_llm_falla_responde_con_extracto_textual(client, crear_usuario, ra
     # No se cachea: cuando vuelva la IA, la misma pregunta se responde completa
     estado["texto"] = "Hasta el 28/11 [1]."
     assert _preguntar(client, u, "¿Hasta cuándo es la inscripción a mesas de examen?")["respuesta"] == "Hasta el 28/11 [1]."
+
+
+def test_la_ia_recibe_la_fecha_de_hoy_para_resolver_proximo(client, crear_usuario, rag, monkeypatch):
+    llamadas, _ = rag
+    monkeypatch.setattr(answer, "_ahora", lambda: datetime(2026, 10, 4, 2, 0, tzinfo=timezone.utc))
+    _preguntar(client, crear_usuario("u@alu.frt.utn.edu.ar"), "¿Cuándo es la próxima mesa?")
+
+    assert "FECHA DE HOY: 03/10/2026" in llamadas["llm"][-1][0]["content"]  # hora de Argentina

@@ -3,15 +3,17 @@ Búsqueda de evidencias para una pregunta (RAG-01, pasos SQL + full-text).
 
 Full-text de Postgres en español con prefijos sobre los lexemas de la pregunta
 ('exam':*), porque el stemmer reduce "examen"→"exam" pero "exámenes"→"examen".
+Sin tildes de los dos lados (sin_tildes, migración 13): casi nadie las escribe.
 Sin LLM ni embeddings: si esto no alcanza, la etapa 7 suma pgvector.
 """
+import re
 from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.ingest.classify import clasificar
+from app.ingest.classify import clasificar, normalizar
 
 MAX_RESULTADOS = 5
 MAX_CHUNKS_POR_INFORMACION = 2
@@ -21,9 +23,19 @@ PUNTAJE_MINIMO = 0.01
 # Sin esto, "¿Quién ganó el mundial?" traía "Paz Mundial" o "Logo ganador".
 COBERTURA_MINIMA = 0.6
 
+# Lexemas que indican "cuándo" pero casi nunca están en los avisos ("¿cuándo es la
+# próxima mesa?" → solo importa "mesa"); la fecha la resuelve la IA con la de hoy.
+LEXEMAS_IGNORADOS = ["proxim", "siguient", "pront", "falt", "cuant"]
+
+# En esas preguntas pesa más lo que tiene fechas por venir: el calendario con las
+# mesas de noviembre sirve más que un aviso confirmado de una mesa que ya pasó.
+_TEMPORAL = re.compile(r"\b(proxim[oa]s?|siguientes?|pronto|falta|cuanto|cuando)\b")
+PESO_FECHA_FUTURA = 3.0
+
 _SQL = text("""
 WITH lex AS (
-    SELECT lexeme FROM unnest(to_tsvector('spanish', :pregunta))
+    SELECT lexeme FROM unnest(to_tsvector('spanish', sin_tildes(:pregunta)))
+    WHERE lexeme <> ALL(:ignorados)
 ), q AS (
     SELECT to_tsquery('spanish', string_agg(quote_literal(lexeme) || ':*', ' | ')) AS tsq,
            count(*) AS n
@@ -45,7 +57,10 @@ SELECT c.id AS chunk_id, i.id AS informacion_id,
          * CASE i.estado::text
              WHEN 'CONFIRMADA' THEN 1.0 WHEN 'PROBABLE' THEN 0.8
              WHEN 'NO_CONFIRMADA' THEN 0.5 ELSE 0.25 END
-         * CASE WHEN i.tipo::text = :tipo THEN 1.5 ELSE 1.0 END AS puntaje
+         * CASE WHEN i.tipo::text = :tipo THEN 1.5 ELSE 1.0 END
+         -- Con fecha_inicio = fechas leídas del texto (sin fechas el vencimiento es "1 año" supuesto)
+         * CASE WHEN i.fecha_inicio IS NOT NULL AND i.fecha_fin >= current_date
+                THEN :peso_futuro ELSE 1.0 END AS puntaje
 FROM candidatos c
 -- Un chunk viene de una publicación (post/página) o de un documento (PDF)
 LEFT JOIN publicaciones p ON p.id = c.publicacion_id
@@ -78,7 +93,8 @@ def buscar(db: Session, pregunta: str, max_resultados: int = MAX_RESULTADOS) -> 
     filas = db.execute(
         _SQL,
         {"pregunta": pregunta, "tipo": "" if ambiguo else tipo.value, "limite": max_resultados * 4,
-         "cobertura": COBERTURA_MINIMA},
+         "cobertura": COBERTURA_MINIMA, "ignorados": LEXEMAS_IGNORADOS,
+         "peso_futuro": PESO_FECHA_FUTURA if _TEMPORAL.search(normalizar(pregunta)) else 1.0},
     ).mappings().all()
 
     resultados: list[Resultado] = []

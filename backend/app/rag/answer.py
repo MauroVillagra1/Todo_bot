@@ -42,6 +42,8 @@ Reglas:
 - Citá cada dato con el número de su fuente entre corchetes, por ejemplo [1].
 - Si el contexto no alcanza para responder, respondé exactamente: "{SIN_EVIDENCIA}"
 - Si una fuente figura como DESACTUALIZADA, avisalo.
+- Para "próximo", "cuándo es", "falta mucho" y similares, compará con la FECHA DE HOY: elegí la fecha
+  más cercana que sea hoy o posterior, y no presentes como futuras las fechas que ya pasaron.
 - Respondé en español, breve (máximo 5 oraciones o una lista corta), sin tablas."""
 
 # De mejor a peor: el estado de la respuesta es el peor entre sus fuentes
@@ -50,6 +52,13 @@ _ORDEN_ESTADO = ["CONFIRMADA", "PROBABLE", "NO_CONFIRMADA", "CONTRADICTORIA", "D
 
 def _ahora() -> datetime:
     return datetime.now(timezone.utc)
+
+
+ARGENTINA = timezone(timedelta(hours=-3))  # sin horario de verano
+
+
+def _hoy() -> str:
+    return f"{_ahora().astimezone(ARGENTINA):%d/%m/%Y}"
 
 
 def _utc(fecha: datetime | None) -> datetime | None:
@@ -63,7 +72,8 @@ def clave_cache(db: Session, pregunta: str) -> str:
     total, ultima = db.query(func.count(Informacion.id), func.max(Informacion.updated_at)).one()
     # Los chunks se pueden regenerar sin tocar informaciones (ej. reextraer PDFs)
     ultimo_chunk = db.query(func.max(Chunk.id)).scalar()
-    base = f"{normalizar(pregunta).strip(' ?¿!¡.')}|{total}|{ultima}|{ultimo_chunk}"
+    # La fecha también: "¿cuándo es la próxima mesa?" cambia de respuesta de un día al otro
+    base = f"{normalizar(pregunta).strip(' ?¿!¡.')}|{total}|{ultima}|{ultimo_chunk}|{_hoy()}"
     return hashlib.sha256(base.encode("utf-8")).hexdigest()
 
 
@@ -179,7 +189,7 @@ def _responder_sin_cache(db: Session, pregunta: str, historial: list[dict], ante
         return {"respuesta": SIN_EVIDENCIA, "estado": "NO_CONFIRMADA", "fuentes": [], "fecha_informacion": None}
 
     mensajes = [
-        {"role": "system", "content": f"{SISTEMA}\n\nCONTEXTO:\n{_contexto(resultados)}"},
+        {"role": "system", "content": f"{SISTEMA}\n\nFECHA DE HOY: {_hoy()}\n\nCONTEXTO:\n{_contexto(resultados)}"},
         *historial,
         {"role": "user", "content": pregunta},
     ]
