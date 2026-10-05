@@ -2,6 +2,11 @@
   command = "npm run build"
   publish = "dist"
 
+# TEMPORAL: la API corre en una PC (base local) detrás de un túnel de Cloudflare,
+# porque Neon superó el cupo de transferencia. Borrar este bloque para volver a Vercel.
+[build.environment]
+  VITE_API_URL_TEMPORAL = "https://lol-dean-abs-quiet.trycloudflare.com"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"

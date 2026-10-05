@@ -39,3 +39,4 @@ Thumbs.db
 
 # Base PostgreSQL local de desarrollo (scripts/db_local.py)
 .pgdata/
+.herramientas/

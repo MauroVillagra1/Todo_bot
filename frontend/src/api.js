@@ -5,7 +5,9 @@
  */
 import axios from 'axios'
 
-const BASE_URL = import.meta.env.VITE_API_URL || ''
+// VITE_API_URL_TEMPORAL (netlify.toml) pisa a la de Vercel: backend corriendo en una PC
+// detrás de un túnel mientras Neon está bloqueado. Borrarla de netlify.toml para volver.
+const BASE_URL = import.meta.env.VITE_API_URL_TEMPORAL || import.meta.env.VITE_API_URL || ''
 
 const api = axios.create({
   baseURL: BASE_URL,
