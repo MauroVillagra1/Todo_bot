@@ -94,6 +94,7 @@ def _contexto(resultados: list[Resultado]) -> str:
 def _fuente(n: int, r: Resultado) -> dict:
     return {
         "numero": n,
+        "informacion_id": r.informacion_id,
         "titulo": r.titulo,
         "url": r.url,
         "fuente": r.fuente,
@@ -138,13 +139,16 @@ def armar_respuesta(texto_llm: str, resultados: list[Resultado]) -> dict:
     }
 
 
-def responder(db: Session, pregunta: str, historial: list[dict]) -> dict:
+def responder(db: Session, pregunta: str, historial: list[dict], excluir: list[int] | None = None) -> dict:
     """
     Devuelve {respuesta, estado, fuentes, fecha_informacion, desde_cache}.
     `historial`: últimos mensajes de la conversación (formato chat), puede estar vacío.
+    `excluir`: "no me sirvió" → informaciones que no se pueden usar (sin caché ni horarios).
     """
     settings = get_settings()
     incrementar(db, "consultas")
+    if excluir is not None:
+        return {**_buscar_y_responder(db, pregunta, historial, "", excluir), "desde_cache": False}
 
     # La caché solo aplica a preguntas sin contexto previo: con historial,
     # "¿y cuándo cierra?" significa algo distinto en cada conversación.
@@ -184,11 +188,16 @@ def _responder_sin_cache(db: Session, pregunta: str, historial: list[dict], ante
         incrementar(db, "consultas_horario_sql")
         return horario
 
+    return _buscar_y_responder(db, pregunta, historial, anterior, [])
+
+
+def _buscar_y_responder(db: Session, pregunta: str, historial: list[dict], anterior: str,
+                        excluir: list[int]) -> dict:
     # Para preguntas de seguimiento se busca también con la pregunta anterior
-    resultados = buscar(db, f"{anterior} {pregunta}".strip())
+    resultados = buscar(db, f"{anterior} {pregunta}".strip(), excluir=excluir)
     if not resultados and anterior:
         # Cambio de tema: las palabras de la pregunta anterior no dejaban cumplir la cobertura
-        resultados = buscar(db, pregunta)
+        resultados = buscar(db, pregunta, excluir=excluir)
     if not resultados:
         incrementar(db, "consultas_sin_evidencia")
         return {"respuesta": SIN_EVIDENCIA, "estado": "NO_CONFIRMADA", "fuentes": [], "fecha_informacion": None}

@@ -33,7 +33,7 @@ def rag(db, monkeypatch):
     llamadas = {"llm": [], "busquedas": []}
     estado = {"resultados": [_r(1), _r(2, "PROBABLE", dia=25)], "texto": "Hasta el 28/11 [1]."}
 
-    def buscar_falso(_db, texto):
+    def buscar_falso(_db, texto, excluir=None):
         llamadas["busquedas"].append(texto)
         return estado["resultados"]
 
@@ -138,7 +138,7 @@ def test_cambio_de_tema_busca_con_la_pregunta_sola(client, crear_usuario, rag, m
     u = crear_usuario("u@alu.frt.utn.edu.ar")
     conv = _preguntar(client, u, "¿Mesas de diciembre?")["conversacion_id"]
 
-    def buscar_falso(_db, texto):  # con la pregunta anterior no se cumple la cobertura
+    def buscar_falso(_db, texto, excluir=None):  # con la pregunta anterior no se cumple la cobertura
         llamadas["busquedas"].append(texto)
         return [] if "diciembre" in texto else estado["resultados"]
 

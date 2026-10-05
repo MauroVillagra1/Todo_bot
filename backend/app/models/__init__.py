@@ -12,6 +12,7 @@ from app.models.cache import CacheRespuesta
 from app.models.horario import HorarioClase
 from app.models.codigo import CodigoVerificacion
 from app.models.sugerencia import Sugerencia
+from app.models.voto import Voto
 
 __all__ = [
     "Usuario",
@@ -30,4 +31,5 @@ __all__ = [
     "CacheRespuesta",
     "HorarioClase",
     "Sugerencia",
+    "Voto",
 ]

@@ -81,6 +81,7 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
         {
           id: Date.now() + 1, tipo: 'asistente', texto: data.respuesta, timestamp: ahora(),
           estado: data.estado, fuentes: data.fuentes ?? [], fecha: data.fecha_informacion,
+          mensajeId: data.mensaje_id,
         },
       ])
     } catch (err) {
@@ -101,6 +102,17 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
       setEscribiendo(false)
       inputRef.current?.focus()
     }
+  }
+
+  /** "No me sirvió": el backend busca en otras fuentes y la respuesta nueva se suma al chat. */
+  function agregarAlternativa(alt) {
+    setMensajes(prev => [
+      ...prev,
+      {
+        id: Date.now(), tipo: 'asistente', texto: alt.respuesta, timestamp: ahora(), alternativa: true,
+        estado: alt.estado, fuentes: alt.fuentes ?? [], fecha: alt.fecha_informacion, mensajeId: alt.mensaje_id,
+      },
+    ])
   }
 
   function handleKeyDown(e) {
@@ -251,7 +263,8 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
               /* Historial */
               <div className="max-w-2xl mx-auto py-6 space-y-1">
                 {mensajes.map(msg => (
-                  <MensajeBurbuja key={msg.id} mensaje={msg} logoComponent={<LogoUTNIA size={26} />} />
+                  <MensajeBurbuja key={msg.id} mensaje={msg} logoComponent={<LogoUTNIA size={26} />}
+                                  onAlternativa={agregarAlternativa} />
                 ))}
 
                 {/* Indicador escribiendo */}

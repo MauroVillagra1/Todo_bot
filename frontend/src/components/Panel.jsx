@@ -3,6 +3,7 @@
  *   Resumen   → estado del sistema y métricas (ADM-01, OBS-01)
  *   Fuentes   → carga manual de Instagram/WhatsApp; ADMIN además activa/desactiva y ajusta confiabilidad
  *   Sugerencias → datos propuestos por usuarios: aceptar (con correcciones) o rechazar con motivo
+ *   Reportes  → respuestas votadas como "dato incorrecto": sacar ese dato del chat o descartar
  *   Horarios  → solo ADMIN: grilla año → comisión → materias, editable (GrillaHorarios)
  *   Usuarios  → solo ADMIN: listar/buscar, dar o quitar MOD, suspender (temporal o permanente)
  * La UI solo oculta lo que no corresponde: los permisos reales se validan en el backend.
@@ -10,7 +11,8 @@
 import { useEffect, useState } from 'react'
 import {
   aceptarSugerencia, actualizarFuente, cambiarRol, cargarPublicacionManual, levantarSuspension,
-  listarFuentes, listarSugerencias, listarUsuarios, obtenerResumen, rechazarSugerencia, suspenderUsuario,
+  listarFuentes, listarReportes, listarSugerencias, listarUsuarios, obtenerResumen, rechazarSugerencia,
+  resolverReporte, resumenVotos, suspenderUsuario,
 } from '../api'
 import GrillaHorarios from './GrillaHorarios'
 import { boton, campo, errorDe, fechaHora, tarjeta } from './ui'
@@ -386,6 +388,103 @@ function Sugerencias() {
   )
 }
 
+// ── Reportes de "dato incorrecto" (MOD y ADMIN) ───────────────────────────────
+
+function TarjetaReporte({ r, onResuelto }) {
+  const [elegidas, setElegidas] = useState(() => r.informaciones.map(i => i.id))
+  const [nota, setNota] = useState('')
+  const [error, setError] = useState(null)
+  const alternar = id => setElegidas(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]))
+
+  async function resolver(accion) {
+    setError(null)
+    try {
+      await resolverReporte(r.id, accion, elegidas, nota)
+      onResuelto(r.id, accion)
+    } catch (err) {
+      setError(errorDe(err, 'No se pudo guardar'))
+    }
+  }
+
+  return (
+    <div className={`${tarjeta} space-y-3`}>
+      <p className="text-xs text-[#8b8b93]">{r.autor} · {fechaHora(r.creado_en)}</p>
+      {r.comentario && <p className="text-sm text-red-300">«{r.comentario}»</p>}
+      <div className="text-xs space-y-1">
+        <p className="text-[#8b8b93]">Pregunta: <span className="text-[#f4f4f5]">{r.pregunta ?? '—'}</span></p>
+        <p className="text-[#8b8b93] whitespace-pre-line">Respuesta: <span className="text-[#c7c7cf]">{r.respuesta}</span></p>
+      </div>
+      {r.informaciones.length > 0 ? (
+        <div className="space-y-1">
+          <p className="text-xs text-[#a1a1aa]">Información que usó la respuesta (marcá la que está mal):</p>
+          {r.informaciones.map(i => (
+            <label key={i.id} className="flex items-start gap-2 text-xs">
+              <input type="checkbox" checked={elegidas.includes(i.id)} onChange={() => alternar(i.id)}
+                     className="mt-0.5 accent-[#e8592e]" />
+              <span>
+                {i.url ? <a href={i.url} target="_blank" rel="noopener noreferrer" className="text-[#f2894f] hover:underline">{i.titulo}</a>
+                       : <span className="text-[#f4f4f5]">{i.titulo}</span>}
+                <span className="text-[#8b8b93]"> · {i.estado} · votos {i.puntaje_votos}
+                  {i.reportes > 1 && <span className="text-red-400"> · {i.reportes} reportes</span>}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-[#8b8b93]">Esta respuesta salió de los horarios (no hay información para ocultar): corregila en la grilla.</p>
+      )}
+      <input placeholder="Nota (opcional)" value={nota} onChange={e => setNota(e.target.value)} className={`${campo} !py-1.5 text-xs`} />
+      <div className="flex items-center gap-3">
+        {r.informaciones.length > 0 && (
+          <button disabled={!elegidas.length} onClick={() => resolver('ocultar')}
+                  className="bg-red-500/80 hover:bg-red-500 disabled:bg-[#232327] disabled:text-[#4b4b53] text-white px-4 py-2 rounded-xl text-sm font-medium">
+            Sacar del chat
+          </button>
+        )}
+        <button onClick={() => resolver('descartar')} className="text-sm text-[#8b8b93] hover:text-[#f4f4f5] hover:underline">
+          Descartar (está bien)
+        </button>
+        {error && <span className="text-xs text-red-400">{error}</span>}
+      </div>
+    </div>
+  )
+}
+
+function Reportes() {
+  const [lista, setLista] = useState(null)
+  const [votos, setVotos] = useState(null)
+  const [error, setError] = useState(null)
+  const [aviso, setAviso] = useState(null)
+
+  useEffect(() => {
+    listarReportes().then(setLista).catch(e => setError(errorDe(e, 'No se pudieron cargar los reportes.')))
+    resumenVotos().then(setVotos).catch(() => {})
+  }, [])
+
+  function resuelto(id, accion) {
+    setLista(prev => prev.filter(x => x.id !== id))
+    setVotos(v => v && { ...v, reportes_pendientes: Math.max(0, v.reportes_pendientes - 1) })
+    setAviso(accion === 'ocultar' ? 'Listo: el chat ya no usa esa información.' : 'Reporte descartado.')
+  }
+
+  return (
+    <div className="space-y-4">
+      {votos && (
+        <div className="grid grid-cols-3 gap-3">
+          <Dato titulo="Me sirvió" valor={votos.positivos} />
+          <Dato titulo="No me sirvió / incorrecto" valor={votos.negativos} />
+          <Dato titulo="Reportes pendientes" valor={votos.reportes_pendientes} alerta={votos.reportes_pendientes > 0} />
+        </div>
+      )}
+      {aviso && <p className="text-xs text-emerald-400">{aviso}</p>}
+      {error && <p className="text-sm text-red-400">{error}</p>}
+      {!lista ? <p className="text-sm text-[#8b8b93]">Cargando…</p>
+        : lista.length === 0 ? <p className="text-sm text-[#8b8b93]">No hay reportes de datos incorrectos para revisar.</p>
+        : lista.map(r => <TarjetaReporte key={r.id} r={r} onResuelto={resuelto} />)}
+    </div>
+  )
+}
+
 // ── Usuarios (ADMIN) ──────────────────────────────────────────────────────────
 
 const DURACIONES = [['1', '1 día'], ['3', '3 días'], ['7', '7 días'], ['30', '30 días'], ['', 'Permanente']]
@@ -522,6 +621,7 @@ export default function Panel({ usuario }) {
     { id: 'resumen', label: 'Resumen' },
     { id: 'fuentes', label: 'Fuentes' },
     { id: 'sugerencias', label: 'Sugerencias' },
+    { id: 'reportes', label: 'Reportes' },
     ...(esAdmin ? [{ id: 'horarios', label: 'Horarios' }, { id: 'usuarios', label: 'Usuarios' }] : []),
   ]
   const [tab, setTab] = useState('resumen')
@@ -545,6 +645,7 @@ export default function Panel({ usuario }) {
           {tab === 'resumen' && <Resumen />}
           {tab === 'fuentes' && <Fuentes esAdmin={esAdmin} />}
           {tab === 'sugerencias' && <Sugerencias />}
+          {tab === 'reportes' && <Reportes />}
           {tab === 'horarios' && esAdmin && <GrillaHorarios />}
           {tab === 'usuarios' && esAdmin && <Usuarios />}
         </div>

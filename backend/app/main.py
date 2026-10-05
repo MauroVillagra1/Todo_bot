@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
-from app.routers import admin, auth, usuarios, chat, fuentes, horarios, sugerencias, webhooks
+from app.routers import admin, auth, usuarios, chat, fuentes, horarios, reportes, sugerencias, webhooks
 
 settings = get_settings()
 
@@ -49,6 +49,7 @@ app.include_router(fuentes.router,  prefix=API_PREFIX)
 app.include_router(admin.router,    prefix=API_PREFIX)
 app.include_router(sugerencias.router, prefix=API_PREFIX)
 app.include_router(horarios.router, prefix=API_PREFIX)
+app.include_router(reportes.router, prefix=API_PREFIX)
 app.include_router(webhooks.router, prefix=API_PREFIX)
 
 # ── Health check ──────────────────────────────────────────────────────────────

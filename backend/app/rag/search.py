@@ -65,6 +65,8 @@ SELECT c.id AS chunk_id, i.id AS informacion_id,
          -- Todas las palabras de la pregunta en el título: es de eso ("Beca de Verano en Austria")
          * CASE WHEN to_tsvector('spanish', sin_tildes(coalesce(p.titulo, d.nombre, ''))) @@ c.tsq_todas
                 THEN :peso_titulo ELSE 1.0 END
+         -- Votos de los usuarios: ±10 % por punto, acotado entre la mitad y +30 %
+         * greatest(0.5, least(1.3, 1 + 0.1 * i.puntaje_votos))
          -- Con fecha_inicio = fechas leídas del texto (sin fechas el vencimiento es "1 año" supuesto)
          * CASE WHEN i.fecha_inicio IS NOT NULL AND i.fecha_fin >= current_date
                 THEN :peso_futuro ELSE 1.0 END AS puntaje
@@ -76,6 +78,8 @@ JOIN evidencias e ON e.publicacion_id = p.id OR e.documento_id = d.id
 JOIN informaciones i ON i.id = e.informacion_id AND i.estado::text NOT IN ('REEMPLAZADA')
 JOIN fuentes f ON f.id = coalesce(p.fuente_id, d.fuente_id)
 WHERE coalesce(p.vigente, d.vigente)
+  -- "No me sirvió": se busca de nuevo sin las informaciones que ya se usaron
+  AND NOT (i.id = ANY(CAST(:excluir AS integer[])))
   AND c.coinciden >= greatest(1, ceil(c.n * :cobertura))
 ORDER BY puntaje DESC, fecha DESC NULLS LAST
 LIMIT :limite
@@ -95,12 +99,14 @@ class Resultado:
     puntaje: float
 
 
-def buscar(db: Session, pregunta: str, max_resultados: int = MAX_RESULTADOS) -> list[Resultado]:
+def buscar(db: Session, pregunta: str, max_resultados: int = MAX_RESULTADOS,
+           excluir: list[int] | None = None) -> list[Resultado]:
     tipo, ambiguo = clasificar(pregunta, "")
     filas = db.execute(
         _SQL,
         {"pregunta": pregunta, "tipo": "" if ambiguo else tipo.value, "limite": max_resultados * 4,
          "cobertura": COBERTURA_MINIMA, "ignorados": LEXEMAS_IGNORADOS, "peso_titulo": PESO_TITULO,
+         "excluir": list(excluir or []),
          "peso_futuro": PESO_FECHA_FUTURA if _TEMPORAL.search(normalizar(pregunta)) else 1.0},
     ).mappings().all()
 

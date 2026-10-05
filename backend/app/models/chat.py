@@ -5,7 +5,7 @@ así que el historial y el límite de consultas por minuto se apoyan en esta tab
 """
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text, func
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -26,6 +26,8 @@ class MensajeChat(Base):
     # "user" | "assistant" — mismo formato que la API de chat de los LLM
     rol: Mapped[str] = mapped_column(String(10), nullable=False)
     contenido: Mapped[str] = mapped_column(Text, nullable=False)
+    # Respuestas: qué informaciones usó (para los votos y para "buscar en otras fuentes")
+    informacion_ids: Mapped[list | None] = mapped_column(JSON)
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
