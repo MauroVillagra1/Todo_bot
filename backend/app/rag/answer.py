@@ -194,7 +194,8 @@ def _responder_sin_cache(db: Session, pregunta: str, historial: list[dict], ante
 def _buscar_y_responder(db: Session, pregunta: str, historial: list[dict], anterior: str,
                         excluir: list[int]) -> dict:
     # Para preguntas de seguimiento se busca también con la pregunta anterior
-    resultados = buscar(db, f"{anterior} {pregunta}".strip(), excluir=excluir)
+    # Con la pregunta anterior solo la búsqueda precisa: la flexible traería el tema viejo
+    resultados = buscar(db, f"{anterior} {pregunta}".strip(), excluir=excluir, flexible=not anterior)
     if not resultados and anterior:
         # Cambio de tema: las palabras de la pregunta anterior no dejaban cumplir la cobertura
         resultados = buscar(db, pregunta, excluir=excluir)
