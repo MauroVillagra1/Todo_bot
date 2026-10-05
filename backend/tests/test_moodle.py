@@ -8,22 +8,30 @@ from app.ingest.sources.moodle import MoodleSource
 from app.models.ingesta import Fuente, TipoFuenteEnum
 
 B = "https://campus.test"
+ANIO = datetime.now(timezone.utc).year
 PAGINAS = {
-    "/course/index.php": f'<div class="categoryname"><a href="{B}/course/index.php?categoryid=1">CARRERAS DE GRADO</a></div>',
+    "/course/index.php": (
+        f'<div class="categoryname"><a href="{B}/course/index.php?categoryid=1">CARRERAS DE GRADO</a></div>'
+        f'<div class="categoryname"><a href="{B}/course/index.php?categoryid=3">CICLOS CORTOS</a></div>'),
     "/course/index.php?categoryid=1": f'<div class="categoryname"><a href="{B}/course/index.php?categoryid=5">Ingeniería en Sistemas de Información</a></div>',
-    "/course/index.php?categoryid=5": (
-        f'<div class="categoryname"><a href="{B}/course/index.php?categoryid=7">Periodo Lectivo 2026</a></div>'
-        f'<div class="categoryname"><a href="{B}/course/index.php?categoryid=8">Periodo Lectivo 2025</a></div>'),
+    "/course/index.php?categoryid=1&perpage=all": f'<div class="categoryname"><a href="{B}/course/index.php?categoryid=5">Ingeniería en Sistemas de Información</a></div>',
+    "/course/index.php?categoryid=5&perpage=all": (
+        f'<div class="categoryname"><a href="{B}/course/index.php?categoryid=7">Periodo Lectivo {ANIO}</a></div>'
+        f'<div class="categoryname"><a href="{B}/course/index.php?categoryid=8">Periodo Lectivo {ANIO - 1}</a></div>'),
     "/course/index.php?categoryid=7&perpage=all": f'<div class="categoryname"><a href="{B}/course/index.php?categoryid=9">2do-Nivel ISI</a></div>',
     "/course/index.php?categoryid=9&perpage=all": f'<div class="coursename"><a href="{B}/course/view.php?id=42">Sistemas Operativos</a></div>',
     "/course/info.php?id=42": '<ul class="teachers"><li>Teacher: Loandos Edmundo</li><li>Teacher: Reynoso Leandro</li>'
                               '<li>Non-editing teacher: Perez Ana</li></ul>',
+    "/course/index.php?categoryid=3&perpage=all": f'<div class="categoryname"><a href="{B}/course/index.php?categoryid=4">Carreras de Pre Grado</a></div>',
+    "/course/index.php?categoryid=4&perpage=all": f'<div class="categoryname"><a href="{B}/course/index.php?categoryid=6">Tecnicatura Universitaria en Programación</a></div>',
+    "/course/index.php?categoryid=6&perpage=all": f'<div class="coursename"><a href="{B}/course/view.php?id=50">Programación I</a></div>',
+    "/course/info.php?id=50": '<ul class="teachers"><li>Teacher: Gomez Ana</li></ul>',
 }
 
 
 def _fuente(**config):
     return Fuente(id=1, nombre="Campus", tipo=TipoFuenteEnum.WEB, url=B, confiabilidad_base=100, activa=True,
-                  config={"moodle": True, "categoria": "Ingeniería en Sistemas de Información", "solo": "2026", **config})
+                  config={"moodle": True, **config})
 
 
 def _adaptador(fuente):
@@ -39,15 +47,24 @@ def test_se_elige_el_adaptador_moodle_por_config():
     assert isinstance(obtener_adaptador(_fuente()), MoodleSource)
 
 
-def test_una_publicacion_por_aula_con_docentes():
-    items = list(_adaptador(_fuente()).obtener_cambios(None))
-    assert len(items) == 1  # el período 2025 se saltea
-    item = items[0]
-    assert item.id_externo == "curso:42" and item.url == f"{B}/course/view.php?id=42"
-    assert item.titulo == "Aula virtual: Sistemas Operativos (2do-Nivel ISI)"
-    assert "Docentes: Loandos Edmundo, Reynoso Leandro." in item.contenido_html
-    assert "Ayudante: Perez Ana." in item.contenido_html
-    assert "Periodo Lectivo 2026 / 2do-Nivel ISI" in item.contenido_html
+def test_todo_el_catalogo_con_categorias_y_aulas():
+    items = {i.id_externo: i for i in _adaptador(_fuente()).obtener_cambios(None)}
+    assert "categoria:8" not in items  # período del año anterior: se saltea
+    so = items["curso:42"]
+    assert so.url == f"{B}/course/view.php?id=42"
+    assert so.titulo == "Aula virtual: Sistemas Operativos — Ingeniería en Sistemas de Información (2do-Nivel ISI)"
+    assert "Docentes: Loandos Edmundo, Reynoso Leandro." in so.contenido_html
+    assert "Ayudante: Perez Ana." in so.contenido_html
+    # "¿Qué tecnicaturas hay?" se responde con la categoría
+    pregrado = items["categoria:4"]
+    assert pregrado.titulo == "Campus Virtual: Carreras de Pre Grado"
+    assert "Incluye: Tecnicatura Universitaria en Programación." in pregrado.contenido_html
+    assert items["curso:50"].titulo == "Aula virtual: Programación I — Tecnicatura Universitaria en Programación"
+
+
+def test_una_sola_categoria():
+    items = list(_adaptador(_fuente(categoria="Ingeniería en Sistemas de Información")).obtener_cambios(None))
+    assert {i.id_externo for i in items} == {"categoria:5", "categoria:7", "categoria:9", "curso:42"}
 
 
 def test_no_revisa_de_nuevo_antes_de_24_horas():
