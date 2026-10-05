@@ -15,7 +15,7 @@ import re
 from collections import defaultdict
 from datetime import date
 
-from sqlalchemy import and_, exists, or_
+from sqlalchemy import and_, exists, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -295,6 +295,12 @@ def responder_horario(db: Session, pregunta: str, anterior: str = "", hoy: date 
         consulta = consulta.filter(HorarioClase.anio == f["anio"])
     if f["electivas"]:
         consulta = consulta.filter(HorarioClase.electiva.is_(True))
+    if docentes:
+        # Prefiltro en SQL por la palabra más larga de cada nombre: sin esto se traía la
+        # grilla entera (~2000 filas) por cada pregunta por un docente. Abajo se filtra exacto.
+        claves = {max(p.split(), key=len) for p in docentes}
+        consulta = consulta.filter(or_(*[func.sin_tildes(func.lower(HorarioClase.docente)).like(f"%{c}%")
+                                         for c in claves]))
     filas = consulta.all()
     if f["turno"]:
         filas = [(h, d) for h, d in filas if h.turno and f["turno"] in h.turno.lower()]

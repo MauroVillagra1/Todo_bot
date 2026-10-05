@@ -41,6 +41,8 @@ jobs:
       - name: Ejecutar ingesta
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # Opcional: con la API key de Neon la corrida avisa si el cupo pasa del 80 %
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
           # El worker no firma tokens, pero Settings exige la variable
           SECRET_KEY: worker-sin-jwt
           ENVIRONMENT: production

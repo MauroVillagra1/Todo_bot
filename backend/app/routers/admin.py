@@ -17,7 +17,7 @@ from app.models.informacion import EstadoInformacionEnum as E, Informacion
 from app.models.ingesta import Documento, EstadoIngestaEnum, Fuente, Ingesta, Publicacion
 from app.models.metrica import MetricaDiaria
 from app.models.usuario import Usuario
-from app.services import llm
+from app.services import llm, uso_neon
 
 router = APIRouter(prefix="/admin", tags=["Administración"])
 
@@ -82,6 +82,8 @@ def resumen(db: Session = Depends(get_db), _mod=Depends(require_mod)):
         },
         # {metrica: {dia: valor}} de los últimos DIAS_METRICAS días
         "metricas": metricas,
+        # Cupo de Neon del período (None si no hay NEON_API_KEY)
+        "neon": uso_neon.consumo(),
     }
 
 

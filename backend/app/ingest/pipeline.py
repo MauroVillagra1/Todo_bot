@@ -5,7 +5,6 @@ Clasificación (etapa 5) y embeddings (etapa 7) se suman después.
 Garantía clave: re-ejecutar sin cambios en la fuente no crea nada nuevo,
 no llama al LLM y no genera embeddings.
 """
-import gzip
 from datetime import timedelta, timezone
 
 from sqlalchemy import func
@@ -61,7 +60,6 @@ def guardar_publicacion(db: Session, fuente: Fuente, item: ItemCrudo) -> str:
     return ACTUALIZADO if anteriores else NUEVO
 
 
-MAX_ORIGINAL_EN_DB = 1024 * 1024  # PDFs más grandes: queda la URL de la fuente como original
 # Una página entera por chunk (horarios: el encabezado con los días queda junto a las filas)
 MAX_CARACTERES_PAGINA = 3000
 
@@ -126,7 +124,7 @@ def guardar_documento(db: Session, fuente: Fuente, doc: DocumentoCrudo) -> str:
         url=doc.url,
         nombre=doc.nombre[:500],
         tipo=TipoDocumentoEnum.PDF,
-        contenido_original=gzip.compress(doc.contenido) if len(doc.contenido) <= MAX_ORIGINAL_EN_DB else None,
+        contenido_original=None,  # el original queda en la URL de la fuente: la base no guarda PDFs (cupo de Neon)
         texto_extraido=texto,
         hash=h,
         fecha_publicacion=doc.fecha_publicacion,

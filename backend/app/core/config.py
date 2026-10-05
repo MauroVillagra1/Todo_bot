@@ -78,6 +78,13 @@ class Settings(BaseSettings):
     WHATSAPP_REENVIADORES: List[str] = []  # números autorizados a reenviar (solo dígitos)
     WHATSAPP_FUENTE: str = ""          # fuente donde se guardan; vacío = la primera de WhatsApp
 
+    # ── Cupo de Neon (plan gratis): se consulta su API para avisar antes de pasarse ──
+    NEON_API_KEY: str = ""             # Neon → Account settings → API keys
+    NEON_LIMITE_TRANSFER_GB: float = 5.0
+    NEON_LIMITE_CU_HORAS: float = 100.0
+    NEON_LIMITE_STORAGE_GB: float = 0.5
+    NEON_AVISO_PORCENTAJE: int = 80    # desde acá el panel y la ingesta avisan
+
     @field_validator(
         "CORS_ORIGINS", "DOMINIOS_PERMITIDOS", "AI_PROVEEDORES", "WHATSAPP_REENVIADORES", mode="before"
     )

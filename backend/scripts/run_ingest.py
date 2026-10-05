@@ -19,6 +19,7 @@ from app.core.database import SessionLocal  # noqa: E402
 from app.ingest.pipeline import procesar_fuentes_activas  # noqa: E402
 from app.ingest.verify import actualizar_vigencias, procesar_pendientes  # noqa: E402
 from app.models.ingesta import EstadoIngestaEnum, Fuente  # noqa: E402
+from app.services import uso_neon  # noqa: E402
 
 
 def main() -> int:
@@ -51,6 +52,14 @@ def main() -> int:
             f"[OK] Informaciones: creadas={r['creadas']} actualizadas={r['actualizadas']} "
             f"llamadas_llm={r['llamadas_llm']} desactualizadas={vencidas}"
         )
+        # Cupo de Neon: en Actions '::warning::' queda como aviso amarillo en la corrida
+        uso = uso_neon.consumo()
+        if uso:
+            print("[NEON] " + " · ".join(f"{m['nombre']}: {m['usado']:.2f}/{m['limite']:g} {m['unidad']} "
+                                         f"({m['porcentaje']:.0f}%)" for m in uso["metricas"]))
+            aviso = uso_neon.texto_aviso(uso)
+            if aviso:
+                print(f"::warning::{aviso}")
         return 1 if hubo_error else 0
     finally:
         db.close()

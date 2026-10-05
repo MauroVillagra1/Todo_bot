@@ -38,6 +38,47 @@ function Dato({ titulo, valor, detalle, alerta }) {
   )
 }
 
+/** Consumo del plan gratis de Neon: al pasarse de cualquiera, Neon corta la base. */
+function CupoNeon({ neon }) {
+  if (!neon) {
+    return (
+      <div className={`${tarjeta} !p-4 text-xs text-[#8b8b93]`}>
+        Cupo de la base: configurá <code>NEON_API_KEY</code> en Vercel para ver el consumo y recibir avisos.
+      </div>
+    )
+  }
+  const fecha = iso => (iso ? new Date(iso).toLocaleDateString('es-AR') : '?')
+  return (
+    <div className={`${tarjeta} ${neon.alerta ? '!border-amber-500/50' : ''}`}>
+      <div className="flex items-baseline justify-between mb-3">
+        <h3 className="text-sm font-semibold text-[#f4f4f5]">Cupo de la base (Neon, plan gratis)</h3>
+        <span className="text-xs text-[#8b8b93]">{fecha(neon.desde)} – {fecha(neon.hasta)}</span>
+      </div>
+      {neon.alerta && (
+        <p className="text-xs text-amber-400 mb-3">
+          ⚠ Cerca del límite: si se supera, Neon bloquea la base hasta el próximo período.
+        </p>
+      )}
+      <div className="space-y-3">
+        {neon.metricas.map(m => (
+          <div key={m.nombre}>
+            <div className="flex justify-between text-xs mb-1">
+              <span className="text-[#a1a1aa]">{m.nombre}</span>
+              <span className={m.alerta ? 'text-amber-400 font-medium' : 'text-[#8b8b93]'}>
+                {m.usado.toFixed(2)} / {m.limite} {m.unidad} ({m.porcentaje}%)
+              </span>
+            </div>
+            <div className="h-1.5 rounded-full bg-[#1e1e22] overflow-hidden">
+              <div className={`h-full rounded-full ${m.porcentaje >= 95 ? 'bg-red-500' : m.alerta ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                   style={{ width: `${Math.min(m.porcentaje, 100)}%` }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function Resumen() {
   const [r, setR] = useState(null)
   const [error, setError] = useState(null)
@@ -61,6 +102,8 @@ function Resumen() {
         <Dato titulo="Contradicciones" valor={info.contradicciones} alerta={info.contradicciones > 0} />
         <Dato titulo="Usuarios" valor={r.usuarios.total} detalle={`${r.usuarios.activos} activos`} />
       </div>
+
+      <CupoNeon neon={r.neon} />
 
       <div className={tarjeta}>
         <h3 className="text-sm font-semibold text-[#f4f4f5] mb-3">Últimos 14 días</h3>
