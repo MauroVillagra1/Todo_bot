@@ -43,3 +43,23 @@ def test_detecta_endpoint_del_host(monkeypatch):
     monkeypatch.setattr(get_settings(), "DATABASE_URL",
                         "postgresql://u:p@ep-divine-fire-b4ialik9-pooler.c-6.us-east-2.aws.neon.tech/neondb")
     assert uso_neon._endpoint() == "ep-divine-fire-b4ialik9"
+
+
+def test_lista_los_proyectos_de_la_organizacion(monkeypatch):
+    import httpx
+    pedidos = []
+
+    def responder(req):
+        pedidos.append(req.url)
+        if req.url.path.endswith("/projects"):
+            return httpx.Response(200, json={"projects": [{"id": "p1"}]})
+        if req.url.path.endswith("/endpoints"):
+            return httpx.Response(200, json={"endpoints": [{"id": "ep-divine-fire-b4ialik9"}]})
+        return httpx.Response(200, json={"project": PROYECTO})
+
+    s = get_settings()
+    monkeypatch.setattr(s, "NEON_ORG_ID", "org-rough-truth-00356190")
+    monkeypatch.setattr(s, "DATABASE_URL", "postgresql://u:p@ep-divine-fire-b4ialik9-pooler.x.neon.tech/db")
+    with httpx.Client(transport=httpx.MockTransport(responder)) as cliente:
+        assert uso_neon._proyecto(cliente) == PROYECTO
+    assert pedidos[0].params["org_id"] == "org-rough-truth-00356190"

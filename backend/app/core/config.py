@@ -79,7 +79,8 @@ class Settings(BaseSettings):
     WHATSAPP_FUENTE: str = ""          # fuente donde se guardan; vacío = la primera de WhatsApp
 
     # ── Cupo de Neon (plan gratis): se consulta su API para avisar antes de pasarse ──
-    NEON_API_KEY: str = ""             # Neon → Account settings → API keys
+    NEON_API_KEY: str = ""             # Neon → Account settings → API keys (empieza con "napi_")
+    NEON_ORG_ID: str = ""              # "org-…": los proyectos de una organización se listan con este ID
     NEON_LIMITE_TRANSFER_GB: float = 5.0
     NEON_LIMITE_CU_HORAS: float = 100.0
     NEON_LIMITE_STORAGE_GB: float = 0.5

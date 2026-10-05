@@ -29,7 +29,9 @@ def _endpoint() -> str:
 
 def _proyecto(cliente: httpx.Client) -> dict | None:
     endpoint = _endpoint()
-    for p in cliente.get(f"{API}/projects").raise_for_status().json().get("projects", []):
+    org = get_settings().NEON_ORG_ID.strip()
+    params = {"org_id": org} if org else {}
+    for p in cliente.get(f"{API}/projects", params=params).raise_for_status().json().get("projects", []):
         endpoints = cliente.get(f"{API}/projects/{p['id']}/endpoints").raise_for_status().json()
         if any(e.get("id") == endpoint for e in endpoints.get("endpoints", [])):
             return cliente.get(f"{API}/projects/{p['id']}").raise_for_status().json()["project"]
