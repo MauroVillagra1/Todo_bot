@@ -43,6 +43,13 @@ def carrera(ruta: list[str]) -> str:
     return candidatas[-1] if candidatas else ruta[-1]
 
 
+def titulo_categoria(nombre: str, incluye: list[str]) -> str:
+    titulo = f"Campus Virtual: {nombre}"
+    if incluye:
+        titulo += f" ({', '.join(incluye)})"
+    return titulo if len(titulo) <= 300 else titulo[:297] + "…"
+
+
 def _periodo_viejo(nombre: str, anio: int) -> bool:
     m = _PERIODO.search(nombre)
     return bool(m) and int(m.group(1)) != anio
@@ -124,7 +131,9 @@ class MoodleSource(Source):
         return ItemCrudo(
             id_externo=f"categoria:{m.group(1) if m else ' / '.join(ruta)}",
             url=url,
-            titulo=f"Campus Virtual: {ruta[-1]}",
+            # Lo que contiene va en el título: "¿qué tecnicaturas hay?" tiene que encontrar esta
+            # entrada antes que cada aula suelta que dice "Tecnicatura" en su título
+            titulo=titulo_categoria(ruta[-1], [n for n, _ in subs]),
             contenido_html=_parrafos(partes),
             fecha_publicacion=None,
             fecha_modificacion=ahora,  # el catálogo no tiene fechas propias
@@ -136,6 +145,10 @@ class MoodleSource(Source):
         de = carrera(ruta)
         partes = [f"Aula virtual de {nombre} en el Campus Virtual de la UTN FRT.",
                   f"Carrera: {de}. Ubicación: {' / '.join(ruta)}."]
+        if "ciencias básicas" in de.lower():
+            # "¿Quién da Química en Ingeniería Civil?": Civil no tiene aula propia, la cursa acá
+            partes.append("Materia de Ciencias Básicas, común a todas las ingenierías: Sistemas de Información, "
+                          "Civil, Eléctrica, Electrónica y Mecánica.")
         por_rol: dict[str, list[str]] = {}
         for rol, persona in docentes:
             por_rol.setdefault(rol, []).append(persona)

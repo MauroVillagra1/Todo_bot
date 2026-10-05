@@ -57,7 +57,7 @@ def test_todo_el_catalogo_con_categorias_y_aulas():
     assert "Ayudante: Perez Ana." in so.contenido_html
     # "¿Qué tecnicaturas hay?" se responde con la categoría
     pregrado = items["categoria:4"]
-    assert pregrado.titulo == "Campus Virtual: Carreras de Pre Grado"
+    assert pregrado.titulo == "Campus Virtual: Carreras de Pre Grado (Tecnicatura Universitaria en Programación)"
     assert "Incluye: Tecnicatura Universitaria en Programación." in pregrado.contenido_html
     assert items["curso:50"].titulo == "Aula virtual: Programación I — Tecnicatura Universitaria en Programación"
 
@@ -92,3 +92,14 @@ def test_pagina_recorta_el_bloque_de_avisos():
 def test_pregunta_de_aula_virtual_no_va_a_horarios(db):
     from app.rag.horarios import responder_horario
     assert responder_horario(db, "¿Tiene aula virtual Sistemas Operativos?") is None
+
+
+def test_pregunta_de_otra_carrera_no_va_a_la_grilla_de_sistemas(db):
+    from app.rag.horarios import responder_horario
+    assert responder_horario(db, "¿Quién da Química en Ingeniería Civil?") is None
+
+
+def test_titulo_de_categoria_dice_que_contiene():
+    from app.ingest.sources.moodle import titulo_categoria
+    assert titulo_categoria("Carreras de Pre Grado", ["Tecnicatura en Programación", "Tecnicatura en Logística"]) == \
+        "Campus Virtual: Carreras de Pre Grado (Tecnicatura en Programación, Tecnicatura en Logística)"
