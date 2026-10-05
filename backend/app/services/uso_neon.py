@@ -64,9 +64,14 @@ def consumo() -> dict | None:
     metricas = [
         _metrica("Transferencia", p.get("data_transfer_bytes", 0) / _GB, s.NEON_LIMITE_TRANSFER_GB, "GB", aviso),
         _metrica("Cómputo", p.get("compute_time_seconds", 0) / 3600, s.NEON_LIMITE_CU_HORAS, "CU-h", aviso),
-        _metrica("Almacenamiento", p.get("synthetic_storage_size", 0) / _GB, s.NEON_LIMITE_STORAGE_GB, "GB", aviso),
+        # El límite real del proyecto viene en la API; si no, el configurado
+        _metrica("Almacenamiento", p.get("synthetic_storage_size", 0) / _GB,
+                 round(p["branch_logical_size_limit_bytes"] / _GB, 2) if p.get("branch_logical_size_limit_bytes")
+                 else s.NEON_LIMITE_STORAGE_GB, "GB", aviso),
     ]
     valor = {
+        # Neon actualiza estos contadores con demora (proyecto nuevo: en 0 un buen rato)
+        "ultima_actividad": p.get("compute_last_active_at"),
         "desde": p.get("consumption_period_start"),
         "hasta": p.get("consumption_period_end"),
         "metricas": metricas,
