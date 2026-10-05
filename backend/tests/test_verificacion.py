@@ -138,3 +138,11 @@ def test_vigencia_vencida_pasa_a_desactualizada(tablas):
     assert actualizar_vigencias(db, hoy=date(2026, 10, 3)) == 0
     assert actualizar_vigencias(db, hoy=date(2026, 10, 4)) == 1
     assert db.query(Informacion).one().estado == E.DESACTUALIZADA
+
+
+def test_pagina_fija_no_vence_por_una_fecha_vieja():
+    from datetime import date
+    from app.ingest.verify import calcular_vigencia
+    _, fin, motivo = calcular_vigencia("SYSACAD: avisos", "Inscripción a partir del Lunes 10 de agosto de 2026",
+                                       date(2026, 10, 5), es_pagina=True)
+    assert fin is None and "mientras esté publicada" in motivo

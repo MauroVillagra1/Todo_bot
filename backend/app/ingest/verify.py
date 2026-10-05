@@ -44,14 +44,16 @@ def calcular_vigencia(
 ) -> tuple[date | None, date | None, str]:
     """Devuelve (fecha_inicio, fecha_fin, explicación)."""
     inicio, fin = extraer_fechas(f"{titulo}\n{texto}", publicada)
+    # Una página fija (inscripciones, contactos, avisos del SYSACAD) vale mientras siga
+    # publicada: una fecha vieja en un párrafo no la vuelve desactualizada.
+    if es_pagina:
+        return inicio, None, "página institucional: vigente mientras esté publicada"
     if fin:
         return inicio, fin, f"vigente hasta {fin:%d/%m/%Y} según las fechas del texto"
     # El encabezado del texto también cuenta: un PDF "1-ANO-2023" dice "HORARIOS 2026"
     anio = anio_mencionado(f"{titulo}\n{texto[:200]}")
     if anio and anio < publicada.year:
         return None, date(anio, 12, 31), f"se refiere al año {anio}"
-    if es_pagina:
-        return None, None, "página institucional sin vencimiento"
     return None, publicada + VIGENCIA_SIN_FECHA, "sin fechas en el texto: se asume 1 año desde la publicación"
 
 

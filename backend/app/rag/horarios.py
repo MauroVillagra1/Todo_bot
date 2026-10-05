@@ -259,7 +259,13 @@ def cuatrimestre_terminado(hoy: date | None = None) -> str:
     return "Primer cuatrimestre" if hoy.month >= 8 else "Segundo cuatrimestre"
 
 
+# "¿Tiene aula virtual X?": es del campus virtual, no de la grilla (aunque diga "aula")
+_CAMPUS = re.compile(r"\b(aula virtual|aulas virtuales|campus|moodle|cvg)\b")
+
+
 def responder_horario(db: Session, pregunta: str, anterior: str = "", hoy: date | None = None) -> dict | None:
+    if _CAMPUS.search(normalizar(pregunta)):
+        return None
     f = _filtros(pregunta)
     if f["es_examen"] and not f["comisiones"]:
         return None
