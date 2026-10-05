@@ -5,9 +5,7 @@
  */
 import axios from 'axios'
 
-// VITE_API_URL_TEMPORAL (netlify.toml) pisa a la de Vercel: backend corriendo en una PC
-// detrás de un túnel mientras Neon está bloqueado. Borrarla de netlify.toml para volver.
-const BASE_URL = import.meta.env.VITE_API_URL_TEMPORAL || import.meta.env.VITE_API_URL || ''
+const BASE_URL = import.meta.env.VITE_API_URL || ''
 
 const api = axios.create({
   baseURL: BASE_URL,
@@ -59,28 +57,6 @@ export async function confirmarRecuperacion(email, codigo, password) {
 export async function enviarMensaje(mensaje, conversacion_id = null) {
   const { data } = await api.post('/api/v1/chat/', { mensaje, conversacion_id })
   return data  // { respuesta, conversacion_id, fuentes }
-}
-
-/** 👍 (valor 1) o 👎 (valor -1, motivo NO_SIRVE | INCORRECTO). Con NO_SIRVE trae `alternativa`. */
-export async function votarRespuesta(mensajeId, valor, motivo = null, comentario = null) {
-  const { data } = await api.post(`/api/v1/chat/mensajes/${mensajeId}/voto`, { valor, motivo, comentario })
-  return data  // { valor, motivo, alternativa: { respuesta, mensaje_id, fuentes, ... } | null }
-}
-
-// ── Reportes de "dato incorrecto" (MOD y ADMIN) ───────────────────────────────
-
-export async function listarReportes() {
-  const { data } = await api.get('/api/v1/reportes/')
-  return data
-}
-
-export async function resolverReporte(id, accion, informacionIds = [], nota = '') {
-  await api.post(`/api/v1/reportes/${id}/resolver`, { accion, informacion_ids: informacionIds, nota })
-}
-
-export async function resumenVotos() {
-  const { data } = await api.get('/api/v1/reportes/resumen')
-  return data  // { positivos, negativos, reportes_pendientes }
 }
 
 // ── Fuentes (MOD y ADMIN) ─────────────────────────────────────────────────────
