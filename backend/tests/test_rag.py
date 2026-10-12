@@ -192,3 +192,23 @@ def test_citas_agrupadas_se_reconocen():
     r = armar_respuesta("Es una competencia [1, 2].", rs)
     assert r["respuesta"] == "Es una competencia [1][2]."
     assert [f["numero"] for f in r["fuentes"]] == [1, 2] and r["estado"] == "CONFIRMADA"
+
+
+def test_fusion_prioriza_lo_que_aparece_en_las_dos_busquedas():
+    from app.rag.search import _fusionar
+
+    precisos = [{"chunk_id": 1}, {"chunk_id": 2}]
+    semanticos = [{"chunk_id": 3}, {"chunk_id": 2}]
+    assert [f["chunk_id"] for f in _fusionar(precisos, semanticos)] == [2, 1, 3]
+
+
+def test_fichas_del_mismo_tipo_no_ocupan_todos_los_lugares():
+    from app.rag.search import MAX_POR_GRUPO_DE_TITULO, _mejores
+
+    fichas = [{"chunk_id": i, "informacion_id": i, "titulo": f"Aula virtual: Materia {i} — Tecnicatura",
+               "texto": "", "url": "", "fuente": "", "fecha": None, "estado": "CONFIRMADA", "puntaje": 1.0}
+              for i in range(6)]
+    resumen = {**fichas[0], "chunk_id": 99, "informacion_id": 99, "titulo": "Campus Virtual: Tecnicaturas"}
+    titulos = [r.titulo for r in _mejores(fichas + [resumen], 0.0, 5)]
+    assert len(titulos) == MAX_POR_GRUPO_DE_TITULO + 1
+    assert titulos[-1] == "Campus Virtual: Tecnicaturas"

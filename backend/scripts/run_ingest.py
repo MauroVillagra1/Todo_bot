@@ -19,7 +19,7 @@ from app.core.database import SessionLocal  # noqa: E402
 from app.ingest.pipeline import procesar_fuentes_activas  # noqa: E402
 from app.ingest.verify import actualizar_vigencias, procesar_pendientes  # noqa: E402
 from app.models.ingesta import EstadoIngestaEnum, Fuente  # noqa: E402
-from app.services import uso_neon  # noqa: E402
+from app.services import embeddings, uso_neon  # noqa: E402
 
 
 def main() -> int:
@@ -52,6 +52,12 @@ def main() -> int:
             f"[OK] Informaciones: creadas={r['creadas']} actualizadas={r['actualizadas']} "
             f"llamadas_llm={r['llamadas_llm']} desactualizadas={vencidas}"
         )
+        # Búsqueda semántica: vectores de los chunks nuevos (si falla, el chat sigue por palabras)
+        try:
+            print(f"[OK] Embeddings nuevos: {embeddings.completar(db)}")
+        except Exception as e:
+            db.rollback()
+            print(f"::warning::Embeddings no generados: {str(e)[:200]}")
         # Cupo de Neon: en Actions '::warning::' queda como aviso amarillo en la corrida
         uso = uso_neon.consumo()
         if uso:

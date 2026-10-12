@@ -5,7 +5,11 @@ Full-text de Postgres en español con prefijos sobre los lexemas de la pregunta
 ('exam':*), porque el stemmer reduce "examen"→"exam" pero "exámenes"→"examen".
 Sin tildes de los dos lados (sin_tildes, migración 13): casi nadie las escribe.
 Si eso no trae nada, se afloja: alguna palabra de la pregunta y después partes de
-palabras en título o texto, y por último palabras parecidas (pg_trgm). Sin LLM ni embeddings.
+palabras en título o texto, y por último palabras parecidas (pg_trgm).
+
+Además, si hay embeddings (services/embeddings.py), se buscan los chunks más parecidos en
+significado ("¿cómo me anoto?" → "Inscripción a cursado") y se combinan con la búsqueda
+precisa por posición en cada lista (RRF). Si la API de embeddings falla, todo sigue por palabras.
 """
 import re
 from dataclasses import dataclass
@@ -15,9 +19,13 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.ingest.classify import clasificar, normalizar
+from app.services import embeddings
 
 MAX_RESULTADOS = 5
 MAX_CHUNKS_POR_INFORMACION = 2
+# Fichas del mismo tipo ("Aula virtual: Inglés I — …", "Aula virtual: Programación II — …"):
+# como mucho estas, para que entre también la página que resume todo
+MAX_POR_GRUPO_DE_TITULO = 3
 PUNTAJE_MINIMO = 0.01
 
 # Proporción mínima de palabras de la pregunta que deben aparecer en el chunk.
@@ -26,7 +34,9 @@ COBERTURA_MINIMA = 0.6
 
 # Lexemas que indican "cuándo" pero casi nunca están en los avisos ("¿cuándo es la
 # próxima mesa?" → solo importa "mesa"); la fecha la resuelve la IA con la de hoy.
-LEXEMAS_IGNORADOS = ["proxim", "siguient", "pront", "falt", "cuant"]
+LEXEMAS_IGNORADOS = ["proxim", "siguient", "pront", "falt", "cuant",
+                     # "lista de…", "cuáles son las…": no están en el texto y bajan la cobertura
+                     "list", "cual"]
 
 # En esas preguntas pesa más lo que tiene fechas por venir: el calendario con las
 # mesas de noviembre sirve más que un aviso confirmado de una mesa que ya pasó.
@@ -101,6 +111,22 @@ WITH lex AS (
 """
 SIMILITUD_MINIMA = 0.55
 
+# Los más cercanos en significado (distancia coseno de pgvector, sin índice: búsqueda exacta)
+_CANDIDATOS_SEMANTICO = """
+WITH cercanos AS (
+    SELECT c.*, 1 - (c.embedding <=> CAST(:vector AS halfvec)) AS similitud
+    FROM chunks c WHERE c.embedding IS NOT NULL
+    ORDER BY c.embedding <=> CAST(:vector AS halfvec)
+    LIMIT :cercanos
+), candidatos AS (
+    SELECT *, 1 AS n, 1 AS coinciden FROM cercanos WHERE similitud >= :umbral_semantico
+)
+"""
+# Debajo de esto el parecido es casual (Gemini da ~0,5 entre textos sin relación)
+UMBRAL_SEMANTICO = 0.62
+CERCANOS = 40
+RRF_K = 60  # fusión por ranking: 1/(K + posición) en cada lista
+
 _PUNTAJE = """
 SELECT c.id AS chunk_id, i.id AS informacion_id,
        coalesce(p.titulo, d.nombre) AS titulo, c.texto, coalesce(p.url, d.url) AS url,
@@ -152,7 +178,10 @@ _PASADAS_FLEXIBLES = [
 ]
 _SQL_APROXIMADO = text(_CANDIDATOS_APROXIMADO + _PUNTAJE.format(
     rango="(1.0 + c.en_titulo) / 10", titulo_completo="c.en_titulo = c.n"))
+_SQL_SEMANTICO = text(_CANDIDATOS_SEMANTICO + _PUNTAJE.format(
+    rango="(c.similitud - :umbral_semantico) / (1 - :umbral_semantico)", titulo_completo="false"))
 _hay_trgm: bool | None = None
+_hay_embeddings: bool | None = None
 
 
 def _pasada_aproximada(db: Session) -> list:
@@ -186,7 +215,21 @@ def buscar(db: Session, pregunta: str, max_resultados: int = MAX_RESULTADOS,
         "peso_futuro": PESO_FECHA_FUTURA if _TEMPORAL.search(normalizar(pregunta)) else 1.0,
         "similitud": SIMILITUD_MINIMA,
     }
-    pasadas = _PASADAS_ESTRICTAS + (_PASADAS_FLEXIBLES + _pasada_aproximada(db) if flexible else [])
+    sql, cobertura, minimo = _PASADAS_ESTRICTAS[0]
+    filas = db.execute(sql, {**parametros, "cobertura": cobertura}).mappings().all()
+    precisos = [f for f in filas if f["puntaje"] >= minimo]
+    # Con la pregunta anterior (flexible=False) solo palabras: por significado siempre
+    # aparecería algo del tema viejo y no se detectaría el cambio de tema.
+    semanticos = _semanticos(db, pregunta, parametros) if flexible else []
+    if len(precisos) >= max_resultados:
+        # Las palabras ya alcanzan: el significado solo reordena lo encontrado, no suma textos
+        # ("tecnicatura en programación" traía materias de Ingeniería en Sistemas)
+        ids = {f["chunk_id"] for f in precisos}
+        semanticos = [f for f in semanticos if f["chunk_id"] in ids]
+    if precisos or semanticos:
+        return _mejores(_fusionar(precisos, semanticos), 0.0, max_resultados)
+
+    pasadas = _PASADAS_FLEXIBLES + _pasada_aproximada(db) if flexible else []
     for sql, cobertura, minimo in pasadas:
         filas = db.execute(sql, {**parametros, "cobertura": cobertura}).mappings().all()
         resultados = _mejores(filas, minimo, max_resultados)
@@ -195,15 +238,51 @@ def buscar(db: Session, pregunta: str, max_resultados: int = MAX_RESULTADOS,
     return []
 
 
+def _semanticos(db: Session, pregunta: str, parametros: dict) -> list:
+    global _hay_embeddings
+    if _hay_embeddings is None:
+        _hay_embeddings = embeddings.hay_columna(db)
+    vector = embeddings.de_pregunta(pregunta) if _hay_embeddings else None
+    if vector is None:
+        return []
+    return db.execute(_SQL_SEMANTICO, {
+        **parametros, "cobertura": 0.0, "vector": embeddings.a_sql(vector),
+        "cercanos": CERCANOS, "umbral_semantico": UMBRAL_SEMANTICO,
+    }).mappings().all()
+
+
+def _fusionar(*listas) -> list:
+    """Reciprocal Rank Fusion: lo que está alto en las dos listas queda primero."""
+    puntos: dict[int, float] = {}
+    filas: dict[int, dict] = {}
+    for lista in listas:
+        for posicion, fila in enumerate(lista):
+            puntos[fila["chunk_id"]] = puntos.get(fila["chunk_id"], 0.0) + 1 / (RRF_K + posicion)
+            filas.setdefault(fila["chunk_id"], fila)
+    return [filas[i] for i in sorted(puntos, key=puntos.get, reverse=True)]
+
+
+def _grupo_de_titulo(titulo: str | None) -> str:
+    """'Aula virtual: Inglés I — Tecnicatura…' → 'aula virtual'; sin prefijo, el título entero."""
+    titulo = normalizar(titulo or "")
+    prefijo, dos_puntos, _ = titulo.partition(":")
+    return prefijo.strip() if dos_puntos and len(prefijo) <= 30 else titulo.strip()
+
+
 def _mejores(filas, minimo: float, max_resultados: int) -> list[Resultado]:
     resultados: list[Resultado] = []
     por_informacion: dict[int, int] = {}
+    por_grupo: dict[str, int] = {}
     for f in filas:
         if f["puntaje"] < minimo:
             continue
         if por_informacion.get(f["informacion_id"], 0) >= MAX_CHUNKS_POR_INFORMACION:
             continue
+        grupo = _grupo_de_titulo(f["titulo"])
+        if por_grupo.get(grupo, 0) >= MAX_POR_GRUPO_DE_TITULO:
+            continue
         por_informacion[f["informacion_id"]] = por_informacion.get(f["informacion_id"], 0) + 1
+        por_grupo[grupo] = por_grupo.get(grupo, 0) + 1
         resultados.append(Resultado(**{k: f[k] for k in Resultado.__dataclass_fields__}))
         if len(resultados) == max_resultados:
             break

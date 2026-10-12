@@ -44,6 +44,8 @@ jobs:
           # Opcional: con la API key de Neon la corrida avisa si el cupo pasa del 80 %
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
           NEON_ORG_ID: org-rough-truth-00356190
+          # Opcional: vectores para la búsqueda semántica de lo nuevo (sin la key se saltea)
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           # El worker no firma tokens, pero Settings exige la variable
           SECRET_KEY: worker-sin-jwt
           ENVIRONMENT: production

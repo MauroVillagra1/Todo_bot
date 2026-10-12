@@ -149,7 +149,8 @@ class Chunk(Base):
         TSVECTOR().with_variant(Text(), "sqlite"),  # SQLite solo en tests
         Computed("to_tsvector('spanish', sin_tildes(texto))", persisted=True),
     )
-    # La columna `embedding` (pgvector) se agrega en la etapa 7, solo si hace falta
+    # `embedding halfvec(768)` (migración 22) no se mapea: SQLite de los tests no la tiene.
+    # Se lee y escribe con SQL en services/embeddings.py y rag/search.py.
 
 
 class Ingesta(Base):
