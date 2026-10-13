@@ -26,6 +26,9 @@ MAX_CHUNKS_POR_INFORMACION = 2
 # Fichas del mismo tipo ("Aula virtual: Inglés I — …", "Aula virtual: Programación II — …"):
 # como mucho estas, para que entre también la página que resume todo
 MAX_POR_GRUPO_DE_TITULO = 3
+# Candidatos que trae cada consulta por resultado pedido: con 18 fichas "Aula virtual" de una
+# carrera, la página que las resume quedaba en el puesto 20 y no entraba
+CANDIDATOS_POR_RESULTADO = 10
 PUNTAJE_MINIMO = 0.01
 
 # Proporción mínima de palabras de la pregunta que deben aparecer en el chunk.
@@ -129,7 +132,8 @@ RRF_K = 60  # fusión por ranking: 1/(K + posición) en cada lista
 
 _PUNTAJE = """
 SELECT c.id AS chunk_id, i.id AS informacion_id,
-       coalesce(p.titulo, d.nombre) AS titulo, c.texto, coalesce(p.url, d.url) AS url,
+       -- Sin el texto: se piden muchos candidatos y el texto solo de los elegidos (_con_textos)
+       coalesce(p.titulo, d.nombre) AS titulo, '' AS texto, coalesce(p.url, d.url) AS url,
        f.nombre AS fuente,
        -- Fecha de publicación: muchas "modificaciones" son ediciones masivas del sitio
        coalesce(p.fecha_publicacion, p.fecha_modificacion, d.fecha_publicacion, d.fecha_captura) AS fecha,
@@ -208,9 +212,23 @@ class Resultado:
 def buscar(db: Session, pregunta: str, max_resultados: int = MAX_RESULTADOS,
            excluir: list[int] | None = None, flexible: bool = True) -> list[Resultado]:
     """`flexible`: si la búsqueda precisa no trae nada, prueba con alguna palabra y con partes de palabras."""
+    return _con_textos(db, _elegir(db, pregunta, max_resultados, excluir, flexible))
+
+
+def _con_textos(db: Session, resultados: list[Resultado]) -> list[Resultado]:
+    if resultados:
+        textos = dict(db.execute(text("SELECT id, texto FROM chunks WHERE id = ANY(:ids)"),
+                                 {"ids": [r.chunk_id for r in resultados]}).all())
+        for r in resultados:
+            r.texto = textos.get(r.chunk_id, "")
+    return resultados
+
+
+def _elegir(db: Session, pregunta: str, max_resultados: int,
+            excluir: list[int] | None, flexible: bool) -> list[Resultado]:
     tipo, ambiguo = clasificar(pregunta, "")
     parametros = {
-        "pregunta": pregunta, "tipo": "" if ambiguo else tipo.value, "limite": max_resultados * 4,
+        "pregunta": pregunta, "tipo": "" if ambiguo else tipo.value, "limite": max_resultados * CANDIDATOS_POR_RESULTADO,
         "ignorados": LEXEMAS_IGNORADOS, "peso_titulo": PESO_TITULO, "excluir": list(excluir or []),
         "peso_futuro": PESO_FECHA_FUTURA if _TEMPORAL.search(normalizar(pregunta)) else 1.0,
         "similitud": SIMILITUD_MINIMA,
@@ -220,12 +238,10 @@ def buscar(db: Session, pregunta: str, max_resultados: int = MAX_RESULTADOS,
     precisos = [f for f in filas if f["puntaje"] >= minimo]
     # Con la pregunta anterior (flexible=False) solo palabras: por significado siempre
     # aparecería algo del tema viejo y no se detectaría el cambio de tema.
-    semanticos = _semanticos(db, pregunta, parametros) if flexible else []
-    if len(precisos) >= max_resultados:
-        # Las palabras ya alcanzan: el significado solo reordena lo encontrado, no suma textos
-        # ("tecnicatura en programación" traía materias de Ingeniería en Sistemas)
-        ids = {f["chunk_id"] for f in precisos}
-        semanticos = [f for f in semanticos if f["chunk_id"] in ids]
+    # Si las palabras ya alcanzan, el significado no se usa: mezclado o reordenando traía
+    # textos de otra carrera ("tecnicatura en programación" → materias de Ingeniería en Sistemas)
+    alcanza = len(_mejores(precisos, 0.0, max_resultados)) >= max_resultados
+    semanticos = _semanticos(db, pregunta, parametros) if flexible and not alcanza else []
     if precisos or semanticos:
         return _mejores(_fusionar(precisos, semanticos), 0.0, max_resultados)
 
