@@ -236,6 +236,20 @@ def test_misma_materia_escrita_distinto_no_pide_aclaracion(base):
     assert "**1K01**" in r["respuesta"] and "**1K02**" in r["respuesta"]
 
 
+def test_materia_sin_numero_es_la_primera(base):
+    _agregar(base, "1K01", "Análisis Matemático I", electiva=False)
+    _agregar(base, "2K01", "Análisis Matemático II", dia=3, electiva=False)
+    r = responder(base, "¿Cuándo se dicta Análisis Matemático?")
+    assert r["estado"] == "CONFIRMADA"
+    assert "**1K01**" in r["respuesta"] and "**2K01**" not in r["respuesta"]
+    dos = responder(base, "¿Cuándo se dicta Análisis Matemático 2?")
+    assert "**2K01**" in dos["respuesta"] and "**1K01**" not in dos["respuesta"]
+
+
+def test_analisis_matematico_sin_numero_en_el_pdf_es_la_primera():
+    assert limpiar_materia("ANALISIS MATEMATICO", None) == ("Análisis Matemático I", None)
+
+
 @pytest.mark.parametrize("mensaje,contiene", [
     ("Hola", "Soy UTNIA"),
     ("buenas tardes!", "Soy UTNIA"),

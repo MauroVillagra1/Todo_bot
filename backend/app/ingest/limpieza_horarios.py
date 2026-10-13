@@ -134,6 +134,7 @@ _MATERIAS = {
     "algorit y est de datos": "Algoritmos y Estructuras de Datos",
     "analisis de sistemas": "Análisis de Sistemas",
     "analisis de sistemas de informacion": "Análisis de Sistemas de Información",
+    "analisis matematico": "Análisis Matemático I",  # no hay una sin número: sola es la I
     "analisis matematico i": "Análisis Matemático I",
     "analisis matematico ii": "Análisis Matemático II",
     "analisis numerico": "Análisis Numérico",

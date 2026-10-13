@@ -181,7 +181,21 @@ def _materias_de(db: Session, pregunta: str) -> list[str]:
     mejor = max(puntajes.values(), default=0)
     if mejor < 0.6:
         return []
-    return [m for m, p in puntajes.items() if p >= mejor - 0.15]
+    elegidas = [m for m, p in puntajes.items() if p >= mejor - 0.15]
+    # Sin número, la materia es la I: "Análisis Matemático" → Análisis Matemático I, no la II
+    if not any(t in _ES_ROMANO for t in preg):
+        con_i = {_sin_numero(m) for m in elegidas if _numero(m) == "i"}
+        elegidas = [m for m in elegidas if _numero(m) in (None, "i") or _sin_numero(m) not in con_i]
+    return elegidas
+
+
+def _numero(materia_norm: str) -> str | None:
+    ultima = _tokens(materia_norm)[-1:]
+    return ultima[0] if ultima and ultima[0] in _ES_ROMANO else None
+
+
+def _sin_numero(materia_norm: str) -> str:
+    return " ".join(t for t in _tokens(materia_norm) if t not in _ES_ROMANO)
 
 
 def _personas(docente: str) -> list[str]:

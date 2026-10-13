@@ -1,6 +1,6 @@
 """
-Servicio de chat: límite por minuto, historial y delegación al RAG.
-El historial y el límite viven en Postgres (tabla mensajes_chat) porque en
+Servicio de chat: límite por minuto, mensajes guardados y delegación al RAG.
+Los mensajes y el límite viven en Postgres (tabla mensajes_chat) porque en
 serverless (Vercel) no hay memoria compartida entre invocaciones.
 """
 import uuid
@@ -18,9 +18,6 @@ from app.models.usuario import Usuario
 from app.rag.answer import responder
 
 settings = get_settings()
-
-TURNOS_HISTORIAL = 2  # pares pregunta/respuesta que se mandan al LLM
-
 
 class LimiteExcedido(Exception):
     """El usuario superó CHAT_MAX_POR_MINUTO."""
@@ -43,17 +40,6 @@ def verificar_limite(usuario: Usuario, db: Session) -> None:
         raise LimiteExcedido()
 
 
-def _historial(db: Session, usuario: Usuario, conversacion_id: str) -> list[dict]:
-    mensajes = (
-        db.query(MensajeChat)
-        .filter(MensajeChat.conversacion_id == conversacion_id, MensajeChat.usuario_id == usuario.id)
-        .order_by(MensajeChat.id.desc())
-        .limit(TURNOS_HISTORIAL * 2)
-        .all()
-    )
-    return [{"role": m.rol, "content": m.contenido} for m in reversed(mensajes)]
-
-
 def responder_consulta(
     pregunta: str,
     usuario: Usuario,
@@ -61,9 +47,9 @@ def responder_consulta(
     conversacion_id: Optional[str] = None,
 ) -> dict:
     conv_id = conversacion_id or str(uuid.uuid4())
-    historial = _historial(db, usuario, conv_id) if conversacion_id else []
-
-    resultado = responder(db, pregunta, historial)
+    # Cada pregunta se responde sola: los mensajes anteriores de la conversación no se usan
+    # ("y de mecatrónica?" mezclaba temas). La conversación se guarda solo para mostrarla.
+    resultado = responder(db, pregunta, [])
 
     respuesta = _guardar_respuesta(db, usuario, conv_id, resultado, pregunta=pregunta)
     return {**resultado, "conversacion_id": conv_id, "mensaje_id": respuesta.id}

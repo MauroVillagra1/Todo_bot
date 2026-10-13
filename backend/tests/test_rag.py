@@ -123,31 +123,14 @@ def test_cache_se_invalida_si_cambian_los_datos(client, crear_usuario, rag, db):
     assert len(llamadas["llm"]) == 2
 
 
-def test_seguimiento_usa_historial_y_no_cache(client, crear_usuario, rag):
+def test_cada_pregunta_se_responde_sola_aunque_sea_la_misma_conversacion(client, crear_usuario, rag):
     llamadas, _ = rag
     u = crear_usuario("u@alu.frt.utn.edu.ar")
     conv = _preguntar(client, u, "¿Mesas de diciembre?")["conversacion_id"]
-    _preguntar(client, u, "¿y cuándo cierra?", conv)
+    _preguntar(client, u, "¿Becas abiertas?", conv)
 
-    # Busca con la pregunta anterior; con menos de 5 resultados completa con la pregunta sola
-    assert llamadas["busquedas"][-2:] == ["¿Mesas de diciembre? ¿y cuándo cierra?", "¿y cuándo cierra?"]
-    assert [m["role"] for m in llamadas["llm"][-1]] == ["system", "user", "assistant", "user"]
-
-
-def test_cambio_de_tema_busca_con_la_pregunta_sola(client, crear_usuario, rag, monkeypatch):
-    llamadas, estado = rag
-    u = crear_usuario("u@alu.frt.utn.edu.ar")
-    conv = _preguntar(client, u, "¿Mesas de diciembre?")["conversacion_id"]
-
-    def buscar_falso(_db, texto, excluir=None, flexible=True):  # con la pregunta anterior no se cumple la cobertura
-        llamadas["busquedas"].append(texto)
-        return [] if "diciembre" in texto else estado["resultados"]
-
-    monkeypatch.setattr(answer, "buscar", buscar_falso)
-    data = _preguntar(client, u, "normativas", conv)
-
-    assert llamadas["busquedas"][-2:] == ["¿Mesas de diciembre? normativas", "normativas"]
-    assert data["respuesta"] != answer.SIN_EVIDENCIA
+    assert llamadas["busquedas"][-1] == "¿Becas abiertas?"  # sin la pregunta anterior
+    assert [m["role"] for m in llamadas["llm"][-1]] == ["system", "user"]  # sin historial
 
 
 def test_si_el_llm_falla_y_no_hay_frases_relevantes_muestra_evidencias(client, crear_usuario, rag):
