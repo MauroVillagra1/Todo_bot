@@ -6,7 +6,7 @@
  * Las reglas reales (dominios, cuentas repetidas, intentos) las valida el backend.
  *
  * Props:
- *   onLogin: función que recibe (token, usuario) cuando el login es exitoso
+ *   onLogin: recibe la sesión ({ access_token, refresh_token, usuario }) cuando el login es exitoso
  */
 import { useState } from 'react'
 import {
@@ -112,7 +112,7 @@ export default function Login({ onLogin }) {
     e.preventDefault()
     ejecutar(async () => {
       const data = await login(email, password)
-      onLogin(data.access_token, data.usuario)
+      onLogin(data)
     }, 'No se pudo iniciar sesión.')
   }
 
@@ -130,7 +130,7 @@ export default function Login({ onLogin }) {
     e.preventDefault()
     ejecutar(async () => {
       const data = await verificarRegistro(email, codigo)
-      onLogin(data.access_token, data.usuario)
+      onLogin(data)
     }, 'No se pudo verificar el código.')
   }
 

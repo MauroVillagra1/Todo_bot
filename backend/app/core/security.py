@@ -1,15 +1,8 @@
 """
-Utilidades de seguridad: hashing de contraseñas y manejo de tokens JWT.
+Utilidades de seguridad: hashing de contraseñas (bcrypt).
+Los tokens JWT de la sesión están en core/tokens.py (TokenFactory).
 """
-from datetime import datetime, timedelta, timezone
-from typing import Any
-
-from jose import JWTError, jwt
 from passlib.context import CryptContext
-
-from app.core.config import get_settings
-
-settings = get_settings()
 
 # ── Hashing de contraseñas (bcrypt) ───────────────────────────────────────────
 # passlib 1.7.4 + bcrypt >= 4.0 tienen un warning que en algunos entornos
@@ -33,45 +26,6 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password[:72], hashed_password)
 
 
-# ── Tokens JWT ────────────────────────────────────────────────────────────────
-def create_access_token(
-    subject: Any,
-    rol: str,
-    expires_delta: timedelta | None = None,
-) -> str:
-    """
-    Genera un token JWT firmado.
-
-    Args:
-        subject: Identificador del usuario (típicamente el ID o email).
-        rol:     Rol del usuario para incluirlo en el payload.
-        expires_delta: Tiempo de vida personalizado; si es None usa el default
-                       definido en ACCESS_TOKEN_EXPIRE_MINUTES.
-
-    Returns:
-        Token JWT como string.
-    """
-    expire = datetime.now(timezone.utc) + (
-        expires_delta
-        if expires_delta
-        else timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    )
-    payload = {
-        "sub": str(subject),
-        "rol": rol,
-        "exp": expire,
-    }
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
-
-
-def decode_access_token(token: str) -> dict:
-    """
-    Decodifica y valida un token JWT.
-
-    Returns:
-        El payload del token como dict.
-
-    Raises:
-        JWTError: Si el token es inválido o expiró.
-    """
-    return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+# Hash de una contraseña cualquiera: si el email no existe se verifica igual contra este,
+# así el login tarda lo mismo y no revela qué cuentas existen por el tiempo de respuesta
+HASH_DE_RELLENO = "$2b$12$ntSbY9r0re/qEGwDi3Hlx.vsUa8d9P4zT1CDVKORUPT.88u9IOCfu"  # bcrypt de un texto cualquiera (fijo: no se calcula al arrancar)

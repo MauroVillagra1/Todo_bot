@@ -18,10 +18,15 @@ class LoginRequest(BaseModel):
 
 
 class TokenResponse(BaseModel):
-    """Respuesta del endpoint de login."""
+    """Sesión: access token (va en cada pedido) y refresh token (solo para renovarlo)."""
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
     usuario: UsuarioRead
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str = Field(..., max_length=2000)
 
 
 class RegistroSolicitud(BaseModel):

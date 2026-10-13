@@ -20,7 +20,8 @@ from sqlalchemy.orm import sessionmaker  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
 from app.core.database import get_db  # noqa: E402
-from app.core.security import create_access_token, hash_password  # noqa: E402
+from app.core.security import hash_password  # noqa: E402
+from app.core.tokens import TokenFactory  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models.usuario import RolEnum, Usuario  # noqa: E402
 
@@ -64,5 +65,5 @@ def crear_usuario(db):
 
 
 def auth(usuario: Usuario) -> dict:
-    token = create_access_token(subject=usuario.id, rol=usuario.rol.value)
+    token = TokenFactory.crear("access", usuario)
     return {"Authorization": f"Bearer {token}"}

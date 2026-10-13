@@ -12,22 +12,75 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-/**
- * Inyecta el token JWT en cada request.
- */
-export function setAuthToken(token) {
-  if (token) {
-    api.defaults.headers.common['Authorization'] = `Bearer ${token}`
-  } else {
-    delete api.defaults.headers.common['Authorization']
-  }
+// ── Sesión (JWT) ──────────────────────────────────────────────────────────────
+// El access token (15 min) vive solo en memoria. El refresh token (7 días) se guarda en
+// localStorage para no perder la sesión al recargar; cuando el access vence, el
+// interceptor pide uno nuevo con el refresh y repite el pedido sin que el usuario lo note.
+const CLAVE_REFRESH = 'utnia_refresh'
+let alVencerSesion = () => {}
+
+function leerRefresh() {
+  try { return localStorage.getItem(CLAVE_REFRESH) } catch { return null }
 }
+
+/** Guarda la sesión que devuelven login, registro y refresh ({ access_token, refresh_token }). */
+export function guardarSesion({ access_token, refresh_token }) {
+  api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`
+  try { localStorage.setItem(CLAVE_REFRESH, refresh_token) } catch { /* modo privado: solo esta pestaña */ }
+}
+
+export function borrarSesion() {
+  delete api.defaults.headers.common['Authorization']
+  try { localStorage.removeItem(CLAVE_REFRESH) } catch { /* nada guardado */ }
+}
+
+/** App avisa qué hacer cuando la sesión ya no se puede renovar (volver al login). */
+export function alVencer(callback) {
+  alVencerSesion = callback
+}
+
+let renovando = null  // un solo pedido de renovación aunque fallen varios a la vez
+
+/** Con el refresh guardado pide un par nuevo. Devuelve { access_token, refresh_token, usuario } o null. */
+export async function renovarSesion() {
+  const refresh = leerRefresh()
+  if (!refresh) return null
+  renovando ??= axios.post(`${BASE_URL}/api/v1/auth/refresh`, { refresh_token: refresh })
+    .then(({ data }) => { guardarSesion(data); return data })
+    .catch(() => { borrarSesion(); return null })
+    .finally(() => { renovando = null })
+  return renovando
+}
+
+api.interceptors.response.use(
+  respuesta => respuesta,
+  async error => {
+    const pedido = error.config
+    const esDeSesion = pedido?.url?.includes('/api/v1/auth/')
+    if (error.response?.status === 401 && pedido && !pedido._reintento && !esDeSesion) {
+      pedido._reintento = true
+      const sesion = await renovarSesion()
+      if (sesion) {
+        pedido.headers['Authorization'] = `Bearer ${sesion.access_token}`
+        return api(pedido)
+      }
+      alVencerSesion()
+    }
+    return Promise.reject(error)
+  },
+)
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 export async function login(email, password) {
   const { data } = await api.post('/api/v1/auth/login', { email, password })
-  return data  // { access_token, token_type, usuario }
+  return data  // { access_token, refresh_token, token_type, usuario }
+}
+
+/** Cierra la sesión en el servidor (revoca los tokens en todos los dispositivos) y en este navegador. */
+export async function cerrarSesion() {
+  try { await api.post('/api/v1/auth/logout') } catch { /* sin conexión o ya vencida: igual se borra */ }
+  borrarSesion()
 }
 
 /** Paso 1 del registro: manda un código de 6 dígitos al mail institucional. */
@@ -39,7 +92,7 @@ export async function solicitarRegistro(nombre, email, password) {
 /** Paso 2: con el código correcto se crea la cuenta y queda logueado. */
 export async function verificarRegistro(email, codigo) {
   const { data } = await api.post('/api/v1/auth/registro/verificar', { email, codigo })
-  return data  // { access_token, token_type, usuario }
+  return data  // { access_token, refresh_token, token_type, usuario }
 }
 
 export async function solicitarRecuperacion(email) {

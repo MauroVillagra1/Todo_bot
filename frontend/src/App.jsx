@@ -2,31 +2,40 @@
  * App — componente raíz que maneja el estado global de sesión.
  *
  * Flujo:
- *   Sin token → Login
- *   Con token → Chat (el sidebar de Chat maneja la navegación Chat/Panel)
+ *   Al abrir: si hay un refresh token guardado se renueva la sesión (no hay que loguearse de nuevo)
+ *   Sin sesión → Login
+ *   Con sesión → Chat (el sidebar de Chat maneja la navegación Chat/Panel)
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Login from './components/Login'
 import Chat  from './components/Chat'
-import { setAuthToken } from './api'
+import { alVencer, borrarSesion, cerrarSesion, guardarSesion, renovarSesion } from './api'
 
 export default function App() {
-  const [token,   setToken]   = useState(null)
-  const [usuario, setUsuario] = useState(null)
+  const [usuario,   setUsuario]   = useState(null)
+  const [iniciando, setIniciando] = useState(true)
 
-  function handleLogin(nuevoToken, datosUsuario) {
-    setToken(nuevoToken)
-    setUsuario(datosUsuario)
-    setAuthToken(nuevoToken)
+  useEffect(() => {
+    alVencer(() => { borrarSesion(); setUsuario(null) })
+    renovarSesion()
+      .then(sesion => setUsuario(sesion?.usuario ?? null))
+      .finally(() => setIniciando(false))
+  }, [])
+
+  function handleLogin(sesion) {
+    guardarSesion(sesion)
+    setUsuario(sesion.usuario)
   }
 
-  function handleLogout() {
-    setToken(null)
+  async function handleLogout() {
+    await cerrarSesion()
     setUsuario(null)
-    setAuthToken(null)
   }
 
-  if (!token || !usuario) {
+  if (iniciando) {
+    return <div className="min-h-screen bg-[#0a0a0c]" />
+  }
+  if (!usuario) {
     return <Login onLogin={handleLogin} />
   }
 

@@ -16,6 +16,7 @@ from app.core.config import get_settings
 from app.routers import admin, auth, usuarios, chat, fuentes, horarios, reportes, sugerencias, webhooks
 
 settings = get_settings()
+API_PREFIX = "/api/v1"
 
 # ── Instancia de la app ───────────────────────────────────────────────────────
 app = FastAPI(
@@ -31,16 +32,37 @@ app = FastAPI(
 )
 
 # ── Middlewares ───────────────────────────────────────────────────────────────
+# La sesión viaja en el header Authorization (no en cookies): sin credenciales de navegador
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
+ENCABEZADOS_DE_SEGURIDAD = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Strict-Transport-Security": "max-age=63072000; includeSubDomains",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+}
+
+
+@app.middleware("http")
+async def encabezados_de_seguridad(request: Request, call_next):
+    respuesta = await call_next(request)
+    for nombre, valor in ENCABEZADOS_DE_SEGURIDAD.items():
+        respuesta.headers.setdefault(nombre, valor)
+    if not settings.is_development:  # en desarrollo /docs carga scripts de un CDN
+        respuesta.headers.setdefault("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+    # Tokens y datos de la cuenta: que ningún proxy ni el navegador los guarden
+    if request.url.path.startswith(f"{API_PREFIX}/auth"):
+        respuesta.headers["Cache-Control"] = "no-store"
+    return respuesta
+
 # ── Routers ───────────────────────────────────────────────────────────────────
-API_PREFIX = "/api/v1"
 
 app.include_router(auth.router,     prefix=API_PREFIX)
 app.include_router(usuarios.router, prefix=API_PREFIX)
@@ -66,7 +88,6 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     headers = {}
     if origin in settings.CORS_ORIGINS:
         headers["Access-Control-Allow-Origin"] = origin
-        headers["Access-Control-Allow-Credentials"] = "true"
 
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

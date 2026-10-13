@@ -6,3 +6,16 @@
   from = "/*"
   to = "/index.html"
   status = 200
+
+# Encabezados de seguridad del sitio. La CSP solo permite scripts propios (un XSS no puede
+# cargar código de afuera ni mandar el token a otro dominio): si se cambia la URL de la API
+# (VITE_API_URL) hay que agregarla en connect-src.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://back-bot-6icc.vercel.app; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Strict-Transport-Security = "max-age=63072000; includeSubDomains"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"

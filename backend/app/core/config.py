@@ -22,10 +22,12 @@ class Settings(BaseSettings):
     # ── Base de datos ──────────────────────────────────────────────────────────
     DATABASE_URL: str
 
-    # ── JWT ───────────────────────────────────────────────────────────────────
-    SECRET_KEY: str
+    # ── JWT (core/tokens.py) ──────────────────────────────────────────────────
+    SECRET_KEY: str  # 32+ caracteres al azar: python -c "import secrets; print(secrets.token_urlsafe(48))"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    # El access es corto: si se filtra sirve poco. El frontend lo renueva solo con el refresh.
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # ── IA ────────────────────────────────────────────────────────────────────
     # OpenRouter — https://openrouter.ai

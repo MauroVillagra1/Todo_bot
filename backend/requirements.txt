@@ -14,7 +14,8 @@ pydantic-settings==2.5.2
 python-dotenv==1.0.1
 
 # Autenticación JWT
-python-jose[cryptography]==3.3.0
+# PyJWT (python-jose está sin mantenimiento y tiene CVEs: CVE-2024-33663/33664)
+PyJWT==2.10.1
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 python-multipart==0.0.9

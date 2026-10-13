@@ -5,11 +5,10 @@ from datetime import timedelta, timezone
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import decode_access_token
+from app.core.tokens import TokenFactory, TokenInvalido
 
 http_bearer = HTTPBearer()
 
@@ -26,15 +25,13 @@ def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = decode_access_token(credentials.credentials)
-        user_id: str = payload.get("sub")
-        if user_id is None:
-            raise credentials_exception
-    except JWTError:
+        payload = TokenFactory.validar(credentials.credentials, "access")
+    except TokenInvalido:
         raise credentials_exception
 
-    user = db.get(Usuario, int(user_id))
-    if user is None:
+    user = db.get(Usuario, int(payload["sub"]))
+    # Versión distinta: la sesión se cerró o cambió la contraseña después de emitir el token
+    if user is None or payload["ver"] != user.version_sesion:
         raise credentials_exception
     motivo = motivo_suspension(user)
     if motivo:

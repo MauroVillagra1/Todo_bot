@@ -1,7 +1,9 @@
 """
 Router de autenticación.
-  POST /api/v1/auth/login  → recibe email+password, devuelve JWT
-  GET  /api/v1/auth/me     → devuelve el usuario autenticado actual
+  POST /api/v1/auth/login    → recibe email+password, devuelve access + refresh (JWT)
+  POST /api/v1/auth/refresh  → con el refresh devuelve un par nuevo (rotación)
+  POST /api/v1/auth/logout   → cierra todas las sesiones del usuario (revoca sus tokens)
+  GET  /api/v1/auth/me       → devuelve el usuario autenticado actual
   POST /api/v1/auth/registro            → datos de la cuenta; manda un código al mail
   POST /api/v1/auth/registro/verificar  → código correcto: crea la cuenta (MIEMBRO) y loguea
   POST /api/v1/auth/recuperar           → manda un código si la cuenta existe
@@ -19,12 +21,13 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, motivo_suspension
-from app.core.security import create_access_token, hash_password, verify_password
+from app.core.security import HASH_DE_RELLENO, hash_password, verify_password
+from app.core.tokens import TokenFactory, TokenInvalido, tokens_de_sesion
 from app.models.codigo import CodigoVerificacion, PropositoCodigoEnum as P
 from app.models.usuario import RolEnum, Usuario
 from app.schemas.auth import (
     CodigoIngresado, LoginRequest, Mensaje, RecuperacionConfirmacion, RecuperacionSolicitud,
-    RegistroSolicitud, TokenResponse,
+    RefreshRequest, RegistroSolicitud, TokenResponse,
 )
 from app.schemas.usuario import UsuarioRead, es_email_institucional
 from app.services.email import EmailNoConfigurado, enviar_email
@@ -34,41 +37,73 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["Autenticación"])
 
 
+# Fuerza bruta: tras estos errores seguidos la cuenta no puede ingresar por un rato
+MAX_INTENTOS_LOGIN = 5
+BLOQUEO_LOGIN = timedelta(minutes=15)
+CREDENCIALES_INCORRECTAS = "Email o contraseña incorrectos"
+
+
+def _sesion(usuario: Usuario) -> TokenResponse:
+    return TokenResponse(**tokens_de_sesion(usuario), usuario=UsuarioRead.model_validate(usuario))
+
+
+def _bloqueado(usuario: Usuario) -> bool:
+    return bool(usuario.bloqueado_hasta) and _utc(usuario.bloqueado_hasta) > _ahora()
+
+
 @router.post("/login", response_model=TokenResponse)
 def login(credentials: LoginRequest, db: Session = Depends(get_db)):
-    """
-    Autentica al usuario y devuelve un token JWT.
-    El token incluye el ID y el rol del usuario en el payload.
-    """
-    user: Usuario | None = (
-        db.query(Usuario)
-        .filter(Usuario.email == credentials.email)
-        .first()
-    )
+    """Devuelve un access token (corto) y un refresh token (largo) con el ID, el rol y la versión de sesión."""
+    user: Usuario | None = db.query(Usuario).filter(Usuario.email == credentials.email).first()
 
-    # Mismo error para dominio no institucional: no revela qué cuentas existen
-    if (
-        not user
-        or not es_email_institucional(user.email)
-        or not verify_password(credentials.password, user.password_hash)
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Email o contraseña incorrectos",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    if user and _bloqueado(user):
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS,
+                            "Demasiados intentos fallidos. Probá de nuevo en 15 minutos.")
+    # Sin cuenta se verifica igual contra un hash de relleno: el tiempo de respuesta no
+    # revela qué emails existen. Mismo error para dominio no institucional.
+    correcta = verify_password(credentials.password, user.password_hash if user else HASH_DE_RELLENO)
+    if not user or not correcta or not es_email_institucional(user.email):
+        if user:
+            user.intentos_fallidos += 1
+            if user.intentos_fallidos >= MAX_INTENTOS_LOGIN:
+                user.bloqueado_hasta, user.intentos_fallidos = _ahora() + BLOQUEO_LOGIN, 0
+                logger.warning("Login bloqueado por intentos fallidos: usuario %s", user.id)
+            db.commit()
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, CREDENCIALES_INCORRECTAS,
+                            headers={"WWW-Authenticate": "Bearer"})
 
     # Solo con la contraseña correcta se avisa que la cuenta está suspendida
     motivo = motivo_suspension(user)
     if motivo:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=motivo)
 
-    token = create_access_token(subject=user.id, rol=user.rol.value)
+    user.intentos_fallidos, user.bloqueado_hasta = 0, None
+    db.commit()
+    return _sesion(user)
 
-    return TokenResponse(
-        access_token=token,
-        usuario=UsuarioRead.model_validate(user),
-    )
+
+@router.post("/refresh", response_model=TokenResponse)
+def renovar(datos: RefreshRequest, db: Session = Depends(get_db)):
+    """Refresh válido → par nuevo. Sesión cerrada, contraseña cambiada o cuenta suspendida → 401/403."""
+    try:
+        claims = TokenFactory.validar(datos.refresh_token, "refresh")
+    except TokenInvalido:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "La sesión venció. Ingresá de nuevo.")
+    user = db.get(Usuario, int(claims["sub"]))
+    if user is None or claims["ver"] != user.version_sesion:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "La sesión se cerró. Ingresá de nuevo.")
+    motivo = motivo_suspension(user)
+    if motivo:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, motivo)
+    return _sesion(user)
+
+
+@router.post("/logout", response_model=Mensaje)
+def logout(current_user: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Revoca todos los tokens del usuario (en todos los dispositivos): útil en PCs compartidas."""
+    current_user.version_sesion += 1
+    db.commit()
+    return Mensaje(mensaje="Sesión cerrada.")
 
 
 @router.get("/me", response_model=UsuarioRead)
@@ -196,8 +231,7 @@ def verificar_registro(datos: CodigoIngresado, db: Session = Depends(get_db)):
     db.add(usuario)
     db.commit()
     db.refresh(usuario)
-    return TokenResponse(access_token=create_access_token(subject=usuario.id, rol=usuario.rol.value),
-                         usuario=UsuarioRead.model_validate(usuario))
+    return _sesion(usuario)
 
 
 @router.post("/recuperar", response_model=Mensaje)
@@ -217,5 +251,8 @@ def confirmar_recuperacion(datos: RecuperacionConfirmacion, db: Session = Depend
         db.commit()
         raise HTTPException(status.HTTP_400_BAD_REQUEST, CODIGO_VENCIDO)
     usuario.password_hash = hash_password(datos.password)
+    # Contraseña nueva: se cierran las sesiones abiertas (por si alguien más tenía acceso)
+    usuario.version_sesion += 1
+    usuario.intentos_fallidos, usuario.bloqueado_hasta = 0, None
     db.commit()
     return Mensaje(mensaje="Listo, ya podés iniciar sesión con tu nueva contraseña.")
