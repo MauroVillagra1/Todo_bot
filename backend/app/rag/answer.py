@@ -10,6 +10,7 @@ nunca se muestra una fuente o URL inventada.
 """
 import hashlib
 import logging
+from itertools import zip_longest
 import re
 from datetime import date, datetime, timedelta, timezone
 
@@ -24,7 +25,7 @@ from app.models.ingesta import Chunk
 from app.rag.conversacion import responder_conversacion
 from app.rag.extractivo import responder_extractivo
 from app.rag.horarios import responder_horario
-from app.rag.search import Resultado, buscar
+from app.rag.search import MAX_RESULTADOS, Resultado, buscar
 from app.services import llm
 from app.services.metricas import incrementar
 
@@ -230,9 +231,14 @@ def _buscar_y_responder(db: Session, pregunta: str, historial: list[dict], anter
     # Para preguntas de seguimiento se busca también con la pregunta anterior
     # Con la pregunta anterior solo la búsqueda precisa: la flexible traería el tema viejo
     resultados = buscar(db, f"{anterior} {pregunta}".strip(), excluir=excluir, flexible=not anterior)
-    if not resultados and anterior:
-        # Cambio de tema: las palabras de la pregunta anterior no dejaban cumplir la cobertura
-        resultados = buscar(db, pregunta, excluir=excluir)
+    if anterior:
+        # También con la pregunta sola, intercalada: "y de mecatrónica?" después de programación
+        # (con la anterior solo salía programación) o un cambio de tema sin cobertura
+        sola = buscar(db, pregunta, excluir=excluir)
+        intercalados = [r for par in zip_longest(resultados, sola) for r in par if r]
+        vistos: set[int] = set()
+        resultados = [r for r in intercalados if not (r.chunk_id in vistos or vistos.add(r.chunk_id))]
+        resultados = resultados[:MAX_RESULTADOS]
     if not resultados:
         incrementar(db, "consultas_sin_evidencia")
         return {"respuesta": SIN_EVIDENCIA, "estado": "NO_CONFIRMADA", "fuentes": [], "fecha_informacion": None}

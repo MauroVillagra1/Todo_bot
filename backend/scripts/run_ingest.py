@@ -54,7 +54,7 @@ def main() -> int:
         )
         # Búsqueda semántica: vectores de los chunks nuevos (si falla, el chat sigue por palabras)
         try:
-            print(f"[OK] Embeddings nuevos: {embeddings.completar(db)}")
+            print(f"[OK] Embeddings nuevos: {embeddings.completar(db, embeddings.MAXIMO_POR_INGESTA)}")
         except Exception as e:
             db.rollback()
             print(f"::warning::Embeddings no generados: {str(e)[:200]}")

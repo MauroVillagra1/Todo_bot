@@ -127,7 +127,8 @@ class MoodleSource(Source):
         if subs:
             partes.append(f"Incluye: {', '.join(n for n, _ in subs)}.")
         if cursos:
-            partes.append(f"Aulas virtuales ({len(cursos)}): {', '.join(n for n, _ in cursos)}.")
+            # "Materias": "materias de mecatrónica" tiene que encontrar esta lista (no dice "aulas")
+            partes.append(f"Materias (aulas virtuales) ({len(cursos)}): {', '.join(n for n, _ in cursos)}.")
         return ItemCrudo(
             id_externo=f"categoria:{m.group(1) if m else ' / '.join(ruta)}",
             url=url,

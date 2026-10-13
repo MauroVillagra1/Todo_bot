@@ -25,6 +25,9 @@ URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODELO}:batchEm
 LOTE = 50                 # textos por pedido a la API
 ESPERA_CUPO = 65          # segundos si la API corta por cupo por minuto (429)
 REINTENTOS_CUPO = 5      # seguidos; después se corta y sigue en la próxima corrida
+# Por corrida de la ingesta (4 por día): el cupo gratis diario (~1000) es el mismo que usan
+# las preguntas del chat; sin tope la carga inicial lo agotaba y el chat quedaba sin significado
+MAXIMO_POR_INGESTA = 150
 
 _cache_preguntas: dict[str, list[float]] = {}  # por proceso: la misma pregunta no se vectoriza dos veces
 

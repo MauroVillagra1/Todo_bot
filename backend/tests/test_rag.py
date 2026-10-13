@@ -129,7 +129,8 @@ def test_seguimiento_usa_historial_y_no_cache(client, crear_usuario, rag):
     conv = _preguntar(client, u, "¿Mesas de diciembre?")["conversacion_id"]
     _preguntar(client, u, "¿y cuándo cierra?", conv)
 
-    assert "Mesas de diciembre" in llamadas["busquedas"][-1]  # busca con la pregunta anterior
+    # Busca con la pregunta anterior; con menos de 5 resultados completa con la pregunta sola
+    assert llamadas["busquedas"][-2:] == ["¿Mesas de diciembre? ¿y cuándo cierra?", "¿y cuándo cierra?"]
     assert [m["role"] for m in llamadas["llm"][-1]] == ["system", "user", "assistant", "user"]
 
 
@@ -203,14 +204,14 @@ def test_fusion_prioriza_lo_que_aparece_en_las_dos_busquedas():
 
 
 def test_fichas_del_mismo_tipo_no_ocupan_todos_los_lugares():
-    from app.rag.search import MAX_POR_GRUPO_DE_TITULO, _mejores
+    from app.rag.search import MAX_POR_TIPO_DE_FICHA, _mejores
 
     fichas = [{"chunk_id": i, "informacion_id": i, "titulo": f"Aula virtual: Materia {i} — Tecnicatura",
                "texto": "", "url": "", "fuente": "", "fecha": None, "estado": "CONFIRMADA", "puntaje": 1.0}
               for i in range(6)]
     resumen = {**fichas[0], "chunk_id": 99, "informacion_id": 99, "titulo": "Campus Virtual: Tecnicaturas"}
     titulos = [r.titulo for r in _mejores(fichas + [resumen], 0.0, 5)]
-    assert len(titulos) == MAX_POR_GRUPO_DE_TITULO + 1
+    assert len(titulos) == MAX_POR_TIPO_DE_FICHA + 1
     assert titulos[-1] == "Campus Virtual: Tecnicaturas"
 
 

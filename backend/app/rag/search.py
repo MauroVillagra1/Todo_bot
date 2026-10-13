@@ -23,9 +23,11 @@ from app.services import embeddings
 
 MAX_RESULTADOS = 5
 MAX_CHUNKS_POR_INFORMACION = 2
-# Fichas del mismo tipo ("Aula virtual: Inglés I — …", "Aula virtual: Programación II — …"):
-# como mucho estas, para que entre también la página que resume todo
-MAX_POR_GRUPO_DE_TITULO = 3
+# Fichas del mismo tipo ("Aula virtual: Inglés I — …", "Campus Virtual: 4to-Nivel ISI"): como
+# mucho 2, para que entre también otra fuente (la página que resume todo, el diseño curricular).
+# Avisos con el mismo título ("Compartimos oportunidad laboral"), hasta 3: son avisos distintos.
+MAX_POR_TIPO_DE_FICHA = 2
+MAX_POR_TITULO_REPETIDO = 3
 # Candidatos que trae cada consulta por resultado pedido: con 18 fichas "Aula virtual" de una
 # carrera, la página que las resume quedaba en el puesto 20 y no entraba
 CANDIDATOS_POR_RESULTADO = 10
@@ -278,11 +280,13 @@ def _fusionar(*listas) -> list:
     return [filas[i] for i in sorted(puntos, key=puntos.get, reverse=True)]
 
 
-def _grupo_de_titulo(titulo: str | None) -> str:
-    """'Aula virtual: Inglés I — Tecnicatura…' → 'aula virtual'; sin prefijo, el título entero."""
+def _grupo_de_titulo(titulo: str | None) -> tuple[str, bool]:
+    """'Aula virtual: Inglés I — Tecnicatura…' → ('aula virtual', True); sin prefijo, (el título, False)."""
     titulo = normalizar(titulo or "")
     prefijo, dos_puntos, _ = titulo.partition(":")
-    return prefijo.strip() if dos_puntos and len(prefijo) <= 30 else titulo.strip()
+    if dos_puntos and len(prefijo) <= 30:
+        return prefijo.strip(), True
+    return titulo.strip(), False
 
 
 def _mejores(filas, minimo: float, max_resultados: int) -> list[Resultado]:
@@ -294,8 +298,8 @@ def _mejores(filas, minimo: float, max_resultados: int) -> list[Resultado]:
             continue
         if por_informacion.get(f["informacion_id"], 0) >= MAX_CHUNKS_POR_INFORMACION:
             continue
-        grupo = _grupo_de_titulo(f["titulo"])
-        if por_grupo.get(grupo, 0) >= MAX_POR_GRUPO_DE_TITULO:
+        grupo, es_ficha = _grupo_de_titulo(f["titulo"])
+        if por_grupo.get(grupo, 0) >= (MAX_POR_TIPO_DE_FICHA if es_ficha else MAX_POR_TITULO_REPETIDO):
             continue
         por_informacion[f["informacion_id"]] = por_informacion.get(f["informacion_id"], 0) + 1
         por_grupo[grupo] = por_grupo.get(grupo, 0) + 1
