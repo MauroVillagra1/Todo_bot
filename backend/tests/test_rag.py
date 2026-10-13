@@ -212,3 +212,16 @@ def test_fichas_del_mismo_tipo_no_ocupan_todos_los_lugares():
     titulos = [r.titulo for r in _mejores(fichas + [resumen], 0.0, 5)]
     assert len(titulos) == MAX_POR_GRUPO_DE_TITULO + 1
     assert titulos[-1] == "Campus Virtual: Tecnicaturas"
+
+
+def test_fechas_pasadas_se_marcan_para_la_ia():
+    from datetime import date
+
+    from app.rag.answer import marcar_fechas_pasadas
+
+    texto = "Inscripción hasta el 11 de Octubre. Estancia del 2 al 27 de febrero de 2027. Cierre 01/09/2026. Abierto 24/7."
+    marcado = marcar_fechas_pasadas(texto, date(2026, 9, 1), date(2026, 10, 12))
+    assert "11 de Octubre (ya pasó)" in marcado
+    assert "27 de febrero de 2027." in marcado
+    assert "01/09/2026 (ya pasó)" in marcado
+    assert "24/7." in marcado

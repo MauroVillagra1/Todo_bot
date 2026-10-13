@@ -11,13 +11,13 @@ nunca se muestra una fuente o URL inventada.
 import hashlib
 import logging
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.ingest.classify import normalizar
+from app.ingest.classify import MESES, normalizar
 from app.models.cache import CacheRespuesta
 from app.models.informacion import Informacion
 from app.models.ingesta import Chunk
@@ -46,6 +46,8 @@ Reglas:
   contá qué se publicó y cuándo, aclarando que ya no está vigente y que no hay una versión actual.
 - Para "próximo", "cuándo es", "falta mucho" y similares, compará con la FECHA DE HOY: elegí la fecha
   más cercana que sea hoy o posterior, y no presentes como futuras las fechas que ya pasaron.
+- Las fechas marcadas "(ya pasó)" son anteriores a hoy: si es el cierre de una inscripción,
+  convocatoria o postulación, decí que ya cerró ese día (aunque la fuente figure vigente).
 - Respondé en español, breve (máximo 5 oraciones o una lista corta), sin tablas."""
 
 # De mejor a peor: el estado de la respuesta es el peor entre sus fuentes
@@ -79,11 +81,43 @@ def clave_cache(db: Session, pregunta: str) -> str:
     return hashlib.sha256(base.encode("utf-8")).hexdigest()
 
 
+# "11 de octubre de 2026", "del 10 al 15 de octubre", "11/10/2026" (las numéricas solo con año:
+# "24/7" o "1/2" no son fechas). Sin año se asume el de la publicación.
+_RE_FECHA_TEXTO = re.compile(
+    rf"\b(\d{{1,2}})\s+(?:al\s+(\d{{1,2}})\s+)?de\s+({'|'.join(MESES)})(?:\s+(?:de\s+|del\s+)?(\d{{4}}))?\b",
+    re.IGNORECASE)
+_RE_FECHA_NUMERICA = re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b")
+
+
+def _fecha(anio: int, mes: int, dia: int) -> date | None:
+    try:
+        return date(anio, mes, dia)
+    except ValueError:
+        return None
+
+
+def marcar_fechas_pasadas(texto: str, publicada: date | None, hoy: date) -> str:
+    """Agrega "(ya pasó)" a las fechas anteriores a hoy: los modelos gratis comparan mal
+    fechas ("inscripción hasta el 11/10" el 12/10 la daban por abierta)."""
+    def marcar(m: re.Match, fecha: date | None) -> str:
+        return f"{m.group(0)} (ya pasó)" if fecha and fecha < hoy else m.group(0)
+
+    def por_texto(m: re.Match) -> str:
+        anio = int(m.group(4)) if m.group(4) else (publicada or hoy).year
+        return marcar(m, _fecha(anio, MESES[m.group(3).lower()], int(m.group(2) or m.group(1))))
+
+    texto = _RE_FECHA_TEXTO.sub(por_texto, texto)
+    return _RE_FECHA_NUMERICA.sub(
+        lambda m: marcar(m, _fecha(int(m.group(3)), int(m.group(2)), int(m.group(1)))), texto)
+
+
 def _contexto(resultados: list[Resultado]) -> str:
     bloques, largo = [], 0
+    hoy = _ahora().astimezone(ARGENTINA).date()
     for n, r in enumerate(resultados, 1):
         fecha = f"{r.fecha:%d/%m/%Y}" if r.fecha else "sin fecha"
-        bloque = f"[{n}] {r.titulo} — {r.fuente}, {fecha}, estado {r.estado}\n{r.texto}"
+        texto = marcar_fechas_pasadas(r.texto, r.fecha.date() if r.fecha else None, hoy)
+        bloque = f"[{n}] {r.titulo} — {r.fuente}, {fecha}, estado {r.estado}\n{texto}"
         if largo + len(bloque) > MAX_CONTEXTO and bloques:
             break
         bloques.append(bloque)
