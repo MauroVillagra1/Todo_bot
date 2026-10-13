@@ -12,6 +12,7 @@ import { useState } from 'react'
 import {
   confirmarRecuperacion, login, solicitarRecuperacion, solicitarRegistro, verificarRegistro,
 } from '../api'
+import fotoFacultad from '../assets/facultad-utn-frt.jpg'
 
 const LOGO_URL = 'https://res.cloudinary.com/dol1ba0ld/image/upload/v1787954474/asd/Preguntale_a_UTNIA_xwocbf.png'
 const DOMINIOS = ['alu.frt.utn.edu.ar', 'doc.frt.utn.edu.ar']
@@ -180,7 +181,9 @@ export default function Login({ onLogin }) {
   )
 
   return (
-    <div className="min-h-screen bg-[#0a0a0c] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-[#0a0a0c] flex">
+      {/* Izquierda: el formulario (en celular ocupa toda la pantalla) */}
+      <div className="flex-1 flex items-center justify-center p-4">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
         .font-display { font-family: 'Space Grotesk', sans-serif; }
@@ -286,6 +289,19 @@ export default function Login({ onLogin }) {
 
         <p className="font-body text-[11px] text-[#4b4b53] text-center mt-4">
           UTN — Facultad Regional Tucumán
+        </p>
+      </div>
+      </div>
+
+      {/* Derecha: foto de la facultad, solo en pantallas de PC */}
+      <div className="hidden lg:block relative w-1/2 xl:w-[55%]">
+        <img src={fotoFacultad} alt="Edificio de la UTN Facultad Regional Tucumán"
+             className="absolute inset-0 w-full h-full object-cover" />
+        {/* Se funde con el fondo oscuro del lado del formulario */}
+        <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0c] via-[#0a0a0c]/30 to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-[#0a0a0c]/80 to-transparent" />
+        <p className="absolute bottom-8 right-10 font-display text-lg font-semibold text-[#f4f4f5]/90 tracking-tight">
+          UTN · Facultad Regional Tucumán
         </p>
       </div>
     </div>
