@@ -29,6 +29,8 @@ app = FastAPI(
     # En producción conviene deshabilitar la doc pública
     docs_url="/docs" if settings.is_development else None,
     redoc_url="/redoc" if settings.is_development else None,
+    # Sin esto el esquema con todos los endpoints quedaba público aunque /docs no
+    openapi_url="/openapi.json" if settings.is_development else None,
 )
 
 # ── Middlewares ───────────────────────────────────────────────────────────────
