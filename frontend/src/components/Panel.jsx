@@ -1,7 +1,7 @@
 /**
  * Panel — MOD y ADMIN.
  *   Resumen   → estado del sistema y métricas (ADM-01, OBS-01)
- *   Fuentes   → carga manual de Instagram/WhatsApp; ADMIN además activa/desactiva y ajusta confiabilidad
+ *   Fuentes   → carga manual de publicaciones; ADMIN además activa/desactiva y ajusta confiabilidad
  *   Sugerencias → datos propuestos por usuarios: aceptar (con correcciones) o rechazar con motivo
  *   Reportes  → respuestas votadas como "dato incorrecto": sacar ese dato del chat o descartar
  *   Horarios  → solo ADMIN: grilla año → comisión → materias, editable (GrillaHorarios)
@@ -181,18 +181,18 @@ function CargaManual({ fuentes, onCargada }) {
   return (
     <form onSubmit={enviar} className={`${tarjeta} space-y-3`}>
       <div>
-        <h3 className="text-sm font-semibold text-[#f4f4f5]">Cargar publicación de Instagram o WhatsApp</h3>
+        <h3 className="text-sm font-semibold text-[#f4f4f5]">Cargar publicación manual</h3>
         <p className="text-xs text-[#8b8b93] mt-0.5">
-          Copiá el texto del posteo y su link. Queda con el estado que corresponde a la confiabilidad de la fuente.
+          Copiá el texto de la publicación y su link. Queda con el estado que corresponde a la confiabilidad de la fuente.
         </p>
       </div>
       <select required value={fuenteId} onChange={e => setFuenteId(e.target.value)} className={campo}>
         <option value="">Elegí la fuente…</option>
         {manuales.map(f => <option key={f.id} value={f.id}>{f.nombre} ({f.confiabilidad_base}%)</option>)}
       </select>
-      <input required type="url" placeholder="Link al posteo" value={form.url} onChange={cambiar('url')} className={campo} />
+      <input required type="url" placeholder="Link a la publicación" value={form.url} onChange={cambiar('url')} className={campo} />
       <input required minLength={3} placeholder="Título" value={form.titulo} onChange={cambiar('titulo')} className={campo} />
-      <textarea required minLength={10} rows={6} placeholder="Texto del posteo" value={form.contenido}
+      <textarea required minLength={10} rows={6} placeholder="Texto de la publicación" value={form.contenido}
                 onChange={cambiar('contenido')} className={campo} />
       <label className="block text-xs text-[#a1a1aa]">
         Fecha de publicación
@@ -254,10 +254,15 @@ function FilaFuente({ fuente, esAdmin, onCambio }) {
   )
 }
 
+// Instagram y WhatsApp quedan fuera del proyecto por ahora: solo se ocultan acá, el backend sigue igual
+const TIPOS_OCULTOS = ['INSTAGRAM', 'WHATSAPP']
+
 function Fuentes({ esAdmin }) {
   const [fuentes, setFuentes] = useState([])
   const [error, setError] = useState(null)
-  const cargar = () => listarFuentes().then(setFuentes).catch(e => setError(errorDe(e, 'No se pudieron cargar las fuentes.')))
+  const cargar = () => listarFuentes()
+    .then(lista => setFuentes(lista.filter(f => !TIPOS_OCULTOS.includes(f.tipo))))
+    .catch(e => setError(errorDe(e, 'No se pudieron cargar las fuentes.')))
   useEffect(() => { cargar() }, [])
 
   return (
