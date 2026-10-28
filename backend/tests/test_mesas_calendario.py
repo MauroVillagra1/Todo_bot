@@ -48,6 +48,37 @@ def test_materia_su_mesa_fechas_y_tribunal(db, datos):
     assert "Avanzados" not in texto  # no confunde con Sistemas Operativos Avanzados
 
 
+@pytest.mark.parametrize("pregunta", [
+    "¿Quiénes evalúan Sistemas Operativos en el final?",
+    "¿Quiénes son los profesores que toman el final de Sistemas Operativos?",
+    "presidente y vocales de sistemas operativos",
+    "¿Qué docentes integran el tribunal de Sistemas Operativos?",
+])
+def test_quien_evalua_el_final_muestra_el_tribunal_primero(db, datos, pregunta):
+    texto = responder_mesa(db, pregunta, hoy=HOY)["respuesta"]
+    tribunal = texto.index("Loandos Edmundo (presidente); vocales: Sale Ernesto")
+    assert tribunal < texto.index("Próximas fechas")
+
+
+def test_tribunal_de_materia_ambigua_desconocida_o_sin_tribunal(db, datos):
+    ambas = responder_mesa(db, "quién me evalúa en el final de algoritmos", hoy=HOY)["respuesta"]
+    assert "Algoritmos y Estructuras de Datos" in ambas and "Algoritmos Genéticos" in ambas
+    assert "Valla Sandra (presidente)" in ambas
+    inexistente = responder_mesa(db, "presidente y vocales de Redes de Datos", hoy=HOY)["respuesta"]
+    assert inexistente.startswith("No encontré «redes datos»") and "Comunicaciones y Redes" in inexistente
+    varias = responder_mesa(db, "tribunal de redes", hoy=HOY)["respuesta"]
+    assert varias.startswith("Hay varias materias con «redes»") and "Redes de Información" in varias
+    fisica = responder_mesa(db, "¿quiénes evalúan el final de Física I?", hoy=HOY)["respuesta"]
+    assert "Todavía no hay tribunal cargado para esta materia." in fisica
+
+
+def test_tribunal_cargado_desde_el_panel_sin_anio_igual_se_muestra(db, datos):
+    db.query(MesaMateria).filter(MesaMateria.materia_norm == "sistemas operativos").update({"anio_tribunal": None})
+    db.commit()
+    texto = responder_mesa(db, "¿Quiénes evalúan Sistemas Operativos?", hoy=HOY)["respuesta"]
+    assert "Tribunal que evalúa el final [2]:" in texto and "Loandos Edmundo (presidente)" in texto
+
+
 def test_sin_numero_es_la_i_y_electiva_por_nombre_corto(db, datos):
     assert "**Física I**" in responder_mesa(db, "¿cuándo es el final de física?", hoy=HOY)["respuesta"]
     texto = responder_mesa(db, "mesa de inteligencia artificial distribuida", hoy=HOY)["respuesta"]

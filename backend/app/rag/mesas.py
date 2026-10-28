@@ -6,6 +6,7 @@ Respuestas de mesas de examen final con SQL, sin LLM.
   "¿Cuándo son las mesas de diciembre?"    → los turnos de ese mes
   "¿Cuándo son las próximas mesas?"        → el próximo turno de cada mesa
   "¿En qué mesas está Zamudio?"            → tribunales donde figura esa persona
+  "¿Quiénes evalúan Física I en el final?" → el tribunal primero (presidente y vocales), después las fechas
 Siempre recuerda que la regularidad es permanente y que con 4 aplazos se recursa.
 """
 import re
@@ -26,7 +27,10 @@ REGLA = ("📌 **La regularidad de una materia es permanente** (no vence). "
          "Si desaprobás el final **4 veces**, tenés que recursar la materia.")
 PALABRAS_MESA = {
     "rindo", "rendir", "rinde", "rinden", "rendimos", "rindes", "mesa", "mesas", "final", "finales",
-    "examen", "examenes", "tribunal", "tribunales",
+    "examen", "examenes", "tribunal", "tribunales", *(_TRIBUNAL := {
+        "presidente", "presidentes", "vocal", "vocales", "evalua", "evaluan", "evaluador", "evaluadores",
+        "evaluadora", "jurado", "jurados", "integra", "integran", "conforman", "componen", "toma", "toman",
+    }),
 }
 # Preguntas sobre la regularidad sin hablar de una mesa: se responde solo la regla
 _REGULARIDAD = re.compile(r"\b(regularidad\b.*\b(vence|dura|permanente|pierd|caduc)|aplazos?|recursar|cuantas veces|cuantos intentos)")
@@ -39,6 +43,7 @@ _GENERICAS = PALABRAS_MESA | {
     "cierra", "hasta", "puedo", "presidente", "vocal", "vocales", "quien", "quienes", "toma", "toman", "dia",
     "mes", "este", "esta", "va", "sera", "seran", "cuando", "donde", "sede", "anexo", "concepcion", "central",
     "casa", "isi", "sistemas", "ingenieria", "rendir", *[normalizar(m) for m in MESES], "setiembre",
+    "profesor", "profesores", "profesora", "docente", "docentes", "me", "nos", "integrantes", "miembros",
 }
 MAX_FECHAS = 3
 
@@ -134,22 +139,32 @@ def responder_mesa(db: Session, pregunta: str, hoy: date | None = None) -> dict 
     if resto:
         materias = [m for m in materias
                     if sum(any(_coincide(q, t) for t in _tokens(m)) for q in resto) / len(resto) >= 0.5]
+    pide_tribunal = bool(palabras & (_TRIBUNAL | {"tribunal", "tribunales", "quien", "quienes"}))
+    candidatas: list[str] = []
+    if not materias and resto:
+        # "algoritmos" nombra dos materias: si todas las palabras están en pocas materias, se muestran todas
+        candidatas = [m for m in catalogo if all(any(_coincide(q, t) for t in _tokens(m)) for q in resto)]
+        if len(candidatas) <= 3:
+            materias = sorted(candidatas)
     personas = _personas(db, pregunta) if not materias else []
 
     if materias:
-        return _por_materia(db, materias, fechas, hoy)
+        return _por_materia(db, materias, fechas, hoy, tribunal_primero=pide_tribunal)
     if personas:
         return _por_persona(db, personas)
     if mesa:
         return _por_mesa(db, mesa, fechas, hoy)
     if mes:
         return _por_mes(mes, fechas, hoy)
+    if resto and pide_tribunal:
+        return _sin_materia(db, resto, varias=len(candidatas) > 3)
     if resto:
         return None  # nombra algo que no está en las mesas (otra carrera, un parcial…): sigue el RAG
     return _proximas_mesas(fechas, hoy)
 
 
-def _por_materia(db: Session, materias: list[str], fechas: list[MesaFecha], hoy: date) -> dict:
+def _por_materia(db: Session, materias: list[str], fechas: list[MesaFecha], hoy: date,
+                 tribunal_primero: bool = False) -> dict:
     filas = db.query(MesaMateria).filter(MesaMateria.materia_norm.in_(materias)).all()
     por_materia: dict[str, list[MesaMateria]] = defaultdict(list)
     for f in filas:
@@ -161,18 +176,35 @@ def _por_materia(db: Session, materias: list[str], fechas: list[MesaFecha], hoy:
         mesa = grupo[0].mesa
         lineas.append(f"**{bonito(grupo[0].materia)}** se rinde en la **Mesa {_romano(mesa)}** [1].")
         proximas = _proximas(fechas, mesa, hoy)
-        if proximas:
-            lineas.append("Próximas fechas:")
-            lineas += [_linea_fecha(f, hoy) for f in proximas]
-        else:
-            lineas.append("No hay más fechas cargadas para esta mesa en el ciclo lectivo.")
-        tribunales = [t for t in grupo if t.anio_tribunal]
+        bloque_fechas = (["Próximas fechas:", *[_linea_fecha(f, hoy) for f in proximas]] if proximas
+                         else ["No hay más fechas cargadas para esta mesa en el ciclo lectivo."])
+        # Cargados desde el panel puede faltar el año del listado: igual se muestran
+        tribunales = [t for t in grupo if t.presidente or t.vocal1 or t.vocal2]
         if tribunales:
             con_tribunal = True
-            lineas.append(f"Tribunal (listado {tribunales[0].anio_tribunal}, puede cambiar) [2]:")
-            lineas += [_tribunal(t) for t in tribunales]
+            anio = next((t.anio_tribunal for t in tribunales if t.anio_tribunal), None)
+            bloque_tribunal = [f"Tribunal que evalúa el final{f' (listado {anio}, puede cambiar)' if anio else ''} [2]:",
+                               *[_tribunal(t) for t in tribunales]]
+        else:
+            bloque_tribunal = ["Todavía no hay tribunal cargado para esta materia."]
+        lineas += [*bloque_tribunal, *bloque_fechas] if tribunal_primero else [*bloque_fechas, *bloque_tribunal]
         lineas.append("")
     return _salida(lineas, con_tribunal)
+
+
+def _sin_materia(db: Session, resto: list[str], varias: bool = False) -> dict:
+    """Pregunta de tribunal sin una materia clara: se dice y se sugieren las parecidas."""
+    nombres = {m for (m,) in db.query(MesaMateria.materia)}
+    parecidas = sorted(bonito(m) for m in nombres if any(_coincide(q, t) for q in resto for t in _tokens(m)))[:8]
+    buscado = " ".join(resto)
+    if varias:
+        lineas = [f"Hay varias materias con «{buscado}» en las mesas de examen. ¿Cuál querés consultar?"]
+    else:
+        lineas = [f"No encontré «{buscado}» entre las materias de las mesas de examen."]
+        if parecidas:
+            lineas.append("¿Quisiste decir alguna de estas?")
+    lineas += [f"- {m}" for m in parecidas]
+    return {"respuesta": "\n".join(lineas), "estado": "CONFIRMADA", "fuentes": [], "fecha_informacion": None}
 
 
 def _por_persona(db: Session, personas: list[str]) -> dict:
