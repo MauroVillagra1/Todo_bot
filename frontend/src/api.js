@@ -283,17 +283,20 @@ export const borrarEvento = id => api.delete(`/api/v1/calendario/${id}`)
 export const listarDocumentos = () => api.get('/api/v1/documentos').then(r => r.data)
 export const urlDocumento = id => `${BASE_URL}/api/v1/documentos/${id}/archivo`
 
-/** archivo: File del input; nombre obligatorio; descripción opcional (si falta, la genera el backend). */
-export async function subirDocumento(archivo, nombre, descripcion) {
+/** archivo: File del input; nombre obligatorio; descripción y fecha (AAAA-MM-DD) opcionales. */
+export async function subirDocumento(archivo, nombre, descripcion, fechaDocumento) {
   const form = new FormData()
   form.append('archivo', archivo)
   form.append('nombre', nombre)
   if (descripcion?.trim()) form.append('descripcion', descripcion.trim())
+  if (fechaDocumento) form.append('fecha_documento', fechaDocumento)
   const { data } = await api.post('/api/v1/documentos', form, { headers: { 'Content-Type': 'multipart/form-data' } })
   return data
 }
 
 export const borrarDocumento = id => api.delete(`/api/v1/documentos/${id}`)
+/** ADMIN: { nombre?, descripcion?, fecha_documento?, desactualizado? } */
+export const actualizarDocumento = (id, cambios) => api.patch(`/api/v1/documentos/${id}`, cambios).then(r => r.data)
 
 // ── Historial de conversaciones ───────────────────────────────────────────────
 

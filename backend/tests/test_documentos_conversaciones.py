@@ -62,6 +62,28 @@ def test_documentos_admin_sube_todos_descargan_y_el_chat_lo_encuentra(client, db
     assert client.get(f"/api/v1/documentos/{doc['id']}/archivo").status_code == 404
 
 
+def test_documento_con_fecha_y_marcado_desactualizado(client, db, crear_usuario):
+    admin = crear_usuario("admin@alu.frt.utn.edu.ar", RolEnum.ADMIN)
+    miembro = crear_usuario("a@alu.frt.utn.edu.ar")
+    r = client.post("/api/v1/documentos", files={"archivo": ("RECURSADO.docx", _docx("REF: RECURSADO DE MATERIAS"), "x")},
+                    data={"nombre": "Recursado de materias", "fecha_documento": "2024-03-26"}, headers=auth(admin))
+    doc = r.json()
+    assert doc["fecha_documento"] == "2024-03-26" and doc["desactualizado"] is False and doc["creado_en"]
+
+    assert client.patch(f"/api/v1/documentos/{doc['id']}", json={"desactualizado": True},
+                        headers=auth(miembro)).status_code == 403
+    r = client.patch(f"/api/v1/documentos/{doc['id']}", json={"desactualizado": True}, headers=auth(admin))
+    assert r.status_code == 200 and r.json()["desactualizado"] is True
+    info = db.query(Informacion).filter(Informacion.estado != "REEMPLAZADA").one()
+    assert info.estado.value == "DESACTUALIZADA"  # el chat lo muestra con aviso
+    assert "desactualizado" in db.query(Chunk).order_by(Chunk.id.desc()).first().texto.lower()
+    assert client.get(f"/api/v1/documentos/{doc['id']}/archivo").status_code == 200  # se sigue descargando
+
+    client.patch(f"/api/v1/documentos/{doc['id']}", json={"desactualizado": False}, headers=auth(admin))
+    db.refresh(info)
+    assert info.estado.value == "CONFIRMADA"
+
+
 def test_documentos_formato_y_tamano(client, crear_usuario):
     admin = crear_usuario("admin@alu.frt.utn.edu.ar", RolEnum.ADMIN)
     exe = client.post("/api/v1/documentos", files={"archivo": ("virus.exe", b"MZ", "application/octet-stream")},

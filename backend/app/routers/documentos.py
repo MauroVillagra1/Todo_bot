@@ -2,7 +2,8 @@
 Router de documentos importantes (notas y formularios para descargar).
   GET    /api/v1/documentos                → lista (cualquier usuario), sin el archivo
   GET    /api/v1/documentos/{id}/archivo   → descarga (público: el chat lo cita con este link)
-  POST   /api/v1/documentos                → subir (ADMIN): archivo ≤ 2 MB, nombre y descripción opcional
+  POST   /api/v1/documentos                → subir (ADMIN): archivo ≤ 2 MB, nombre, descripción y fecha opcionales
+  PATCH  /api/v1/documentos/{id}           → corregir nombre, descripción o fecha, o marcarlo desactualizado (ADMIN)
   DELETE /api/v1/documentos/{id}           → borrar (ADMIN)
 
 Al subirlo se lee su texto (PDF o Word) y, si no se escribió una descripción, se genera una
@@ -13,12 +14,12 @@ import io
 import logging
 import re
 import zipfile
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from html import escape
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -57,7 +58,16 @@ class DocumentoRead(BaseModel):
     archivo_nombre: str
     content_type: str
     tamano: int
+    fecha_documento: date | None
+    desactualizado: bool
     creado_en: datetime
+
+
+class DocumentoUpdate(BaseModel):
+    nombre: str | None = Field(None, min_length=3, max_length=200)
+    descripcion: str | None = Field(None, min_length=3, max_length=1000)
+    fecha_documento: date | None = None
+    desactualizado: bool | None = None
 
 
 def texto_de(contenido: bytes, extension: str) -> str:
@@ -120,8 +130,12 @@ def indexar(db: Session, doc: DocumentoImportante, url: str) -> None:
     """Publicación del documento: queda buscable en el chat, sin vencimiento, citada con el link de descarga."""
     fuente = _fuente(db)
     texto = doc.texto_extraido or ""
-    contenido = (f"Documento para descargar: «{doc.nombre}».\n{doc.descripcion}\n"
-                 f"Se descarga desde la sección Documentos de UTNIA (menú) o desde este enlace: {url}")
+    contenido = f"Documento para descargar: «{doc.nombre}».\n{doc.descripcion}\n"
+    if doc.fecha_documento:
+        contenido += f"Fecha del documento: {doc.fecha_documento:%d/%m/%Y}.\n"
+    if doc.desactualizado:
+        contenido += "ATENCIÓN: este documento está marcado como desactualizado; consultá en la facultad si sigue vigente.\n"
+    contenido += f"Se descarga desde la sección Documentos de UTNIA (menú) o desde este enlace: {url}"
     if texto:
         contenido += f"\n\nContenido del documento:\n{texto[:MAX_TEXTO_INDEXADO]}"
     ahora = datetime.now(timezone.utc)
@@ -133,10 +147,17 @@ def indexar(db: Session, doc: DocumentoImportante, url: str) -> None:
     guardar_publicacion(db, fuente, item)
     db.commit()
     procesar_pendientes(db)
+    estado = E.DESACTUALIZADA if doc.desactualizado else E.CONFIRMADA
     for info in _informaciones(db, doc.id):
+        if info.estado == E.REEMPLAZADA:
+            continue
         info.tipo = TipoInformacionEnum.TRAMITE
         info.fecha_fin = None  # un formulario no vence por las fechas que tenga adentro
-        info.estado = E.CONFIRMADA
+        if info.estado != estado:
+            db.add(Verificacion(informacion_id=info.id, resultado=estado, puntuacion=info.confianza,
+                                explicacion="Marcado como desactualizado por un administrador" if doc.desactualizado
+                                else "Documento vigente según un administrador"))
+        info.estado = estado
     db.query(CacheRespuesta).delete()
     db.commit()
 
@@ -177,6 +198,7 @@ async def subir(
     archivo: UploadFile = File(...),
     nombre: str = Form(..., min_length=3, max_length=200),
     descripcion: str | None = Form(None, max_length=1000),
+    fecha_documento: date | None = Form(None),
     db: Session = Depends(get_db),
     admin=Depends(require_admin),
 ):
@@ -194,12 +216,28 @@ async def subir(
     doc = DocumentoImportante(
         nombre=nombre.strip(), descripcion=(descripcion or "").strip() or describir(nombre.strip(), texto),
         archivo_nombre=archivo_nombre, content_type=TIPOS[extension], tamano=len(contenido),
-        contenido=contenido, texto_extraido=texto or None, subido_por=admin.id,
+        contenido=contenido, texto_extraido=texto or None, subido_por=admin.id, fecha_documento=fecha_documento,
     )
     db.add(doc)
     db.commit()
     db.refresh(doc)
     indexar(db, doc, url_descarga(request, doc.id))
+    return doc
+
+
+@router.patch("/{documento_id}", response_model=DocumentoRead)
+def actualizar(documento_id: int, datos: DocumentoUpdate, request: Request, db: Session = Depends(get_db),
+               _admin=Depends(require_admin)):
+    doc = db.get(DocumentoImportante, documento_id)
+    if not doc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Documento no encontrado")
+    for campo, valor in datos.model_dump(exclude_unset=True).items():
+        if valor is None and campo in ("nombre", "descripcion", "desactualizado"):
+            raise HTTPException(422, f"«{campo}» no puede quedar vacío")
+        setattr(doc, campo, valor.strip() if isinstance(valor, str) else valor)
+    db.commit()
+    indexar(db, doc, url_descarga(request, doc.id))  # versión nueva para el chat (y el estado que corresponde)
+    db.refresh(doc)
     return doc
 
 
