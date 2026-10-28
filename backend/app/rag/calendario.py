@@ -128,7 +128,7 @@ def _notas(eventos: list[EventoCalendario], n: str, hoy: date) -> dict | None:
     respuesta = _lista(notas, hoy, None, "Plazos para presentar notas")
     if respuesta:
         respuesta["respuesta"] += ("\n\n📄 Los modelos de nota (cambio de comisión, ampliación de cupo, "
-                                   "inscripción fuera de término, cambio de plan) se descargan en **Documentos**, en el menú.")
+                                   "inscripción fuera de término, cambio de plan, recursado) se descargan en **Documentos**, en el menú.")
     return respuesta
 
 
