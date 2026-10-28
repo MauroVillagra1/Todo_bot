@@ -31,3 +31,13 @@ export async function confirmar(texto, { titulo = '¿Estás seguro?', boton = 'S
   })
   return r.isConfirmed
 }
+
+/** Pide un texto obligatorio (ej. un motivo); devuelve el texto o null si se canceló. */
+export async function pedirTexto(texto, { titulo = 'Confirmar', boton = 'Sí, borrar', placeholder = '' } = {}) {
+  const r = await Swal.fire({
+    ...TEMA, title: titulo, text: texto, icon: 'warning', input: 'text', inputPlaceholder: placeholder,
+    showCancelButton: true, confirmButtonText: boton, cancelButtonText: 'Cancelar', reverseButtons: true,
+    inputValidator: v => (!v || v.trim().length < 3 ? 'Escribí un motivo (al menos 3 letras).' : undefined),
+  })
+  return r.isConfirmed ? r.value.trim() : null
+}

@@ -342,6 +342,20 @@ def _como_fuente(datos: dict) -> Resultado:
                      estado="CONFIRMADA", puntaje=0)
 
 
+def _paros_vigentes(db: Session, omitir: set[int]) -> list[Resultado]:
+    """Los paros de hoy en adelante como fuentes del contexto (con su autor, como cualquier dato cargado)."""
+    from app.rag.fechas import hoy_argentina
+    from app.services.avisos import paros
+    try:
+        return [Resultado(chunk_id=0, informacion_id=p.id, titulo=p.titulo, texto=p.contenido,
+                          url=get_settings().SITE_URL, fuente="Carga de moderadores", fecha=p.created_at,
+                          estado=p.estado.value, puntaje=0)
+                for p in paros(db, hoy_argentina()) if p.id not in omitir]
+    except Exception as e:  # un extra: sin esto la respuesta sale igual
+        logger.warning("No se pudieron leer los paros: %s", str(e)[:200])
+        return []
+
+
 def _buscar_y_responder(db: Session, pregunta: str, historial: list[dict], anterior: str,
                         excluir: list[int], datos: dict | None = None) -> dict:
     # Para preguntas de seguimiento se busca también con la pregunta anterior
@@ -355,6 +369,9 @@ def _buscar_y_responder(db: Session, pregunta: str, historial: list[dict], anter
         vistos: set[int] = set()
         resultados = [r for r in intercalados if not (r.chunk_id in vistos or vistos.add(r.chunk_id))]
         resultados = resultados[:MAX_RESULTADOS]
+    # Paros vigentes: siempre a la vista de la IA (son pocos), pregunten como pregunten
+    ya = {r.informacion_id for r in resultados}
+    resultados = [*_paros_vigentes(db, set(excluir) | ya), *resultados]
     if datos:  # los datos de la base van primero: son la fuente [1]
         resultados = [_como_fuente(datos), *resultados]
     if not resultados:

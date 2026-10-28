@@ -223,6 +223,9 @@ export async function aceptarSugerencia(id, cambios = {}) {
   return data
 }
 
+/** SMOD y ADMIN: una aceptada deja de usarse en el chat (queda en el historial). */
+export const borrarSugerencia = (id, motivo) => api.post(`/api/v1/sugerencias/${id}/borrar`, { motivo }).then(r => r.data)
+
 export async function rechazarSugerencia(id, motivo) {
   const { data } = await api.post(`/api/v1/sugerencias/${id}/rechazar`, { motivo })
   return data

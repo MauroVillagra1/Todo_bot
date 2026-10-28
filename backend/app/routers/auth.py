@@ -30,6 +30,7 @@ from app.schemas.auth import (
     RefreshRequest, RegistroSolicitud, TokenResponse,
 )
 from app.schemas.usuario import UsuarioRead, es_email_institucional
+from app.services.auditoria import registrar
 from app.services.email import EmailNoConfigurado, enviar_email
 
 logger = logging.getLogger(__name__)
@@ -116,7 +117,11 @@ def get_me(current_user: Usuario = Depends(get_current_user)):
 def editar_perfil(datos: PerfilUpdate, current_user: Usuario = Depends(get_current_user),
                   db: Session = Depends(get_db)):
     """Mi perfil: nombre y apellido por separado (el mail institucional no se cambia)."""
+    antes = {"email": current_user.email, "nombre": current_user.nombre, "apellido": current_user.apellido}
     current_user.nombre, current_user.apellido = datos.nombre_completo, datos.apellido
+    registrar(db, "usuarios", current_user.id, "actualizacion", antes,
+              {"email": current_user.email, "nombre": current_user.nombre, "apellido": current_user.apellido},
+              current_user)
     db.commit()
     db.refresh(current_user)
     return current_user
@@ -132,6 +137,8 @@ def cambiar_password(datos: CambioPassword, current_user: Usuario = Depends(get_
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "La contraseña nueva tiene que ser distinta de la actual.")
     current_user.password_hash = hash_password(datos.nueva)
     current_user.version_sesion += 1
+    # Nunca se guarda la contraseña: solo que se cambió
+    registrar(db, "usuarios", current_user.id, "cambio_clave", None, {"email": current_user.email}, current_user)
     db.commit()
     return _sesion(current_user)
 
@@ -255,6 +262,9 @@ def verificar_registro(datos: CodigoIngresado, db: Session = Depends(get_db)):
                       rol=rol_inicial(datos.email),
                       password_hash=codigo.datos["password_hash"])
     db.add(usuario)
+    db.flush()
+    registrar(db, "usuarios", usuario.id, "creacion", None,
+              {"email": usuario.email, "nombre": usuario.nombre, "rol": usuario.rol.value}, usuario)
     db.commit()
     db.refresh(usuario)
     return _sesion(usuario)
@@ -280,5 +290,6 @@ def confirmar_recuperacion(datos: RecuperacionConfirmacion, db: Session = Depend
     # Contraseña nueva: se cierran las sesiones abiertas (por si alguien más tenía acceso)
     usuario.version_sesion += 1
     usuario.intentos_fallidos, usuario.bloqueado_hasta = 0, None
+    registrar(db, "usuarios", usuario.id, "cambio_clave", None, {"email": usuario.email, "por": "recuperación"}, usuario)
     db.commit()
     return Mensaje(mensaje="Listo, ya podés iniciar sesión con tu nueva contraseña.")

@@ -22,6 +22,7 @@ from app.models.informacion import EstadoInformacionEnum as E, Evidencia, Inform
 from app.models.ingesta import Documento, Publicacion
 from app.models.usuario import Usuario
 from app.models.voto import MotivoVotoEnum, Voto
+from app.services.auditoria import registrar
 
 router = APIRouter(prefix="/reportes", tags=["Reportes"])
 
@@ -107,12 +108,14 @@ def resolver_reporte(voto_id: int, datos: Resolucion, db: Session = Depends(get_
     if voto.revisado:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="El reporte ya fue revisado")
     nota = datos.nota.strip()
+    antes = {"titulo": f"Reporte #{voto.id}", "revisado": False, "informaciones": {}}
     if datos.accion == "ocultar":
         permitidas = set(db.get(MensajeChat, voto.mensaje_id).informacion_ids or [])
         elegidas = [i for i in datos.informacion_ids if i in permitidas]
         if not elegidas:
             raise HTTPException(status_code=422, detail="Elegí qué información sacar del chat")
         for info in db.query(Informacion).filter(Informacion.id.in_(elegidas)):
+            antes["informaciones"][str(info.id)] = info.estado.value
             info.estado = E.DESACTUALIZADA
             db.add(Verificacion(
                 informacion_id=info.id, resultado=E.DESACTUALIZADA, puntuacion=info.confianza,
@@ -124,6 +127,8 @@ def resolver_reporte(voto_id: int, datos: Resolucion, db: Session = Depends(get_
     else:
         voto.resolucion = "Descartado" + (f": {nota}" if nota else "")
     voto.revisado, voto.revisor_id = True, mod.id
+    registrar(db, "reportes", voto.id, "ocultar" if datos.accion == "ocultar" else "descartar", antes,
+              {"titulo": f"Reporte #{voto.id}", "revisado": True, "resolucion": voto.resolucion}, mod)
     db.commit()
 
 

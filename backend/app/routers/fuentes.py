@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.dependencies import require_admin
+from app.services.auditoria import foto, registrar
 from app.ingest.pipeline import DUPLICADO, guardar_publicacion
 from app.ingest.sources import TIPOS_CARGA_MANUAL, ItemCrudo
 from app.ingest.verify import procesar_pendientes
@@ -74,14 +75,17 @@ def actualizar_fuente(
     fuente_id: int,
     datos: FuenteUpdate,
     db: Session = Depends(get_db),
-    _admin=Depends(require_admin),
+    admin=Depends(require_admin),
 ):
     """Activar/desactivar una fuente o cambiar su confiabilidad. Solo ADMIN."""
     fuente = db.get(Fuente, fuente_id)
     if not fuente:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fuente no encontrada")
+    campos = ("nombre", "activa", "confiabilidad_base")
+    antes = foto(fuente, campos)
     for campo, valor in datos.model_dump(exclude_unset=True).items():
         setattr(fuente, campo, valor)
+    registrar(db, "fuentes", fuente.id, "actualizacion", antes, foto(fuente, campos), admin)
     db.commit()
     return _leer(fuente)
 
@@ -92,7 +96,7 @@ def cargar_publicacion(
     fuente_id: int,
     datos: PublicacionManual,
     db: Session = Depends(get_db),
-    _admin=Depends(require_admin),
+    admin=Depends(require_admin),
 ):
     fuente = db.get(Fuente, fuente_id)
     if not fuente:
@@ -130,6 +134,11 @@ def cargar_publicacion(
         .filter(Evidencia.publicacion_id == pub.id)
         .first()
     )
+    if info and resultado != "duplicado":
+        registrar(db, "informacion", info.id, "creacion", None,
+                  {"titulo": info.titulo, "tipo": info.tipo.value, "estado": info.estado.value, "fuente": fuente.nombre},
+                  admin)
+        db.commit()
     return PublicacionManualResultado(
         resultado=resultado,
         publicacion_id=pub.id,

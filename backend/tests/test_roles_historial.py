@@ -274,3 +274,23 @@ def test_la_ia_recibe_los_datos_de_la_base_y_lo_cargado(client, db, usuarios, mo
     assert r["respuesta"].startswith("El lunes 2 la clase")
     assert "_Cargado por Test (mod@alu.frt.utn.edu.ar)_" in r["respuesta"]
     assert r["fuentes"][0]["fuente"] == "Datos de la base de la facultad"
+
+
+def test_todos_los_cambios_quedan_en_el_historial(client, db, usuarios):
+    from app.models.sugerencia import Sugerencia
+    Sugerencia.__table__.create(db.get_bind(), checkfirst=True)
+    admin, comun = usuarios[RolEnum.ADMIN], usuarios[RolEnum.USUARIO]
+    client.patch("/api/v1/auth/me", json={"nombre": "Ana", "apellido": "García"}, headers=auth(comun))
+    client.post("/api/v1/auth/me/password", json={"actual": "clave1234", "nueva": "nueva1234"}, headers=auth(comun))
+    client.post("/api/v1/sugerencias/", json={"titulo": "Aula nueva", "contenido": "Física I pasa al aula 105."},
+                headers=auth(comun))
+    acciones = [(c["tabla"], c["accion"]) for c in
+                client.get("/api/v1/historial", params={"usuario_id": comun.id}, headers=auth(admin)).json()["items"]]
+    assert acciones == [("sugerencias", "creacion"), ("usuarios", "cambio_clave"), ("usuarios", "actualizacion")]
+    cambios = client.get("/api/v1/historial", params={"usuario_id": comun.id}, headers=auth(admin)).json()["items"]
+    assert "clave" not in str(cambios[1]["valor_nuevo"]).lower().replace("cambio_clave", "")  # nunca la contraseña
+    # El cambio de contraseña posterior no impide deshacer el cambio de nombre
+    perfil = cambios[2]
+    assert client.post(f"/api/v1/historial/{perfil['id']}/deshacer", headers=auth(admin)).status_code == 200
+    db.expire_all()
+    assert db.get(Usuario, comun.id).nombre == "Test"

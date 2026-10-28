@@ -6,7 +6,8 @@ Router de sugerencias de datos.
   POST /api/v1/sugerencias/{id}/aceptar     → quien revisa puede corregir título/texto;
        entra por el mismo pipeline que la carga manual y queda buscable en el chat
   POST /api/v1/sugerencias/{id}/rechazar    → con un motivo que ve quien la envió
-Aceptar y rechazar quedan en el historial de cambios.
+  POST /api/v1/sugerencias/{id}/borrar      → SMOD y ADMIN: una aceptada deja de usarse en el chat (con motivo)
+Aceptar, rechazar y borrar quedan en el historial de cambios; borrar se puede deshacer.
 """
 from datetime import datetime, timezone
 from html import escape
@@ -21,7 +22,8 @@ from app.core.dependencies import get_current_user, require_smod
 from app.ingest.pipeline import guardar_publicacion
 from app.ingest.sources import ItemCrudo
 from app.ingest.verify import procesar_pendientes
-from app.models.informacion import Evidencia, Informacion
+from app.models.cache import CacheRespuesta
+from app.models.informacion import EstadoInformacionEnum as E, Evidencia, Informacion, Verificacion
 from app.models.ingesta import Fuente, Publicacion, TipoFuenteEnum
 from app.models.sugerencia import EstadoSugerenciaEnum as S, Sugerencia
 from app.models.usuario import Usuario
@@ -118,6 +120,8 @@ def crear_sugerencia(datos: SugerenciaCreate, db: Session = Depends(get_db), usu
     s = Sugerencia(usuario_id=usuario.id, titulo=datos.titulo.strip(), contenido=datos.contenido.strip(),
                    url=str(datos.url) if datos.url else None, estado=S.PENDIENTE)
     db.add(s)
+    db.flush()
+    registrar(db, "sugerencias", s.id, "creacion", None, {"titulo": s.titulo, "estado": S.PENDIENTE.value}, usuario)
     db.commit()
     return _leer(db, s)
 
@@ -174,6 +178,48 @@ def aceptar_sugerencia(
               {"titulo": s.titulo, "estado": S.ACEPTADA.value}, mod)
     db.commit()
     procesar_pendientes(db)  # queda buscable en el chat de inmediato
+    return _leer(db, s, con_autor=True)
+
+
+def informaciones_de(db: Session, sugerencia_id: int) -> list[Informacion]:
+    """Las informaciones que salieron de la sugerencia (todas sus versiones publicadas)."""
+    return (
+        db.query(Informacion)
+        .join(Evidencia, Evidencia.informacion_id == Informacion.id)
+        .join(Publicacion, Publicacion.id == Evidencia.publicacion_id)
+        .filter(Publicacion.id_externo == f"sugerencia:{sugerencia_id}")
+        .distinct().all()
+    )
+
+
+@router.post("/{sugerencia_id}/borrar", response_model=SugerenciaRead)
+def borrar_sugerencia(
+    sugerencia_id: int,
+    datos: Rechazo,
+    db: Session = Depends(get_db),
+    smod=Depends(require_smod),
+):
+    """Una sugerencia aceptada deja de usarse en el chat. Queda en el historial (el ADMIN puede deshacerlo)."""
+    s = db.get(Sugerencia, sugerencia_id)
+    if not s:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sugerencia no encontrada")
+    if s.estado != S.ACEPTADA:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Solo se borran sugerencias aceptadas")
+    motivo = datos.motivo.strip()
+    infos = informaciones_de(db, s.id)
+    antes = {"titulo": s.titulo, "estado": s.estado.value, "motivo": s.motivo,
+             "informaciones": {str(i.id): i.estado.value for i in infos}}
+    for info in infos:
+        if info.estado != E.REEMPLAZADA:
+            info.estado = E.REEMPLAZADA
+            db.add(Verificacion(informacion_id=info.id, resultado=E.REEMPLAZADA, puntuacion=info.confianza,
+                                explicacion=f"Sugerencia borrada por {smod.nombre}: {motivo}"))
+    db.query(Publicacion).filter(Publicacion.id_externo == f"sugerencia:{s.id}").update({"vigente": False})
+    s.estado, s.motivo = S.BORRADA, motivo
+    registrar(db, "sugerencias", s.id, "baja", antes, {"titulo": s.titulo, "estado": S.BORRADA.value, "motivo": motivo},
+              smod)
+    db.query(CacheRespuesta).delete()  # que el chat deje de usarla ya
+    db.commit()
     return _leer(db, s, con_autor=True)
 
 

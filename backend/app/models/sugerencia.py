@@ -1,7 +1,8 @@
 """
 Modelo Sugerencia — dato que propone cualquier usuario para sumar a la base.
-Un MOD la acepta (entra como publicación de la fuente «Sugerencias de usuarios»
-y queda buscable en el chat) o la rechaza con un motivo.
+Un SMOD o ADMIN la acepta (entra como publicación de la fuente «Sugerencias de usuarios»
+y queda buscable en el chat) o la rechaza con un motivo. Una aceptada se puede borrar después
+(BORRADA: el chat deja de usarla; motivo guarda por qué).
 """
 import enum
 from datetime import datetime
@@ -16,6 +17,7 @@ class EstadoSugerenciaEnum(str, enum.Enum):
     PENDIENTE = "PENDIENTE"
     ACEPTADA  = "ACEPTADA"
     RECHAZADA = "RECHAZADA"
+    BORRADA   = "BORRADA"    # estaba aceptada y un SMOD/ADMIN la sacó del chat
 
 
 class Sugerencia(Base):
@@ -31,7 +33,7 @@ class Sugerencia(Base):
         default=EstadoSugerenciaEnum.PENDIENTE, nullable=False, index=True,
     )
     revisor_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"))
-    motivo: Mapped[str | None] = mapped_column(String(500))  # por qué se rechazó
+    motivo: Mapped[str | None] = mapped_column(String(500))  # por qué se rechazó o se borró
     publicacion_id: Mapped[int | None] = mapped_column(ForeignKey("publicaciones.id"))
     creada_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

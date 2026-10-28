@@ -214,6 +214,8 @@ class Resultado:
 def buscar(db: Session, pregunta: str, max_resultados: int = MAX_RESULTADOS,
            excluir: list[int] | None = None, flexible: bool = True) -> list[Resultado]:
     """`flexible`: si la búsqueda precisa no trae nada, prueba con alguna palabra y con partes de palabras."""
+    # "Paros próximos." no debe buscar distinto que "Paros próximos"
+    pregunta = pregunta.strip().strip(".,;:!?¡¿…\"' ")
     return _con_textos(db, _elegir(db, pregunta, max_resultados, excluir, flexible))
 
 

@@ -62,6 +62,35 @@ def test_mod_acepta_y_queda_como_publicacion(client, tablas, crear_usuario):
     assert client.post(f"/api/v1/sugerencias/{sid}/rechazar", json={"motivo": "x" * 5}, headers=auth(mod)).status_code == 409
 
 
+def test_smod_borra_una_aceptada_queda_registrado_y_el_admin_lo_deshace(client, tablas, crear_usuario):
+    alumno = crear_usuario("alumno@alu.frt.utn.edu.ar")
+    mod = crear_usuario("mod@alu.frt.utn.edu.ar", RolEnum.MOD)
+    smod = crear_usuario("smod@alu.frt.utn.edu.ar", RolEnum.SMOD)
+    admin = crear_usuario("admin@alu.frt.utn.edu.ar", RolEnum.ADMIN)
+    sid = client.post("/api/v1/sugerencias/", json=SUGERENCIA, headers=auth(alumno)).json()["id"]
+    url = f"/api/v1/sugerencias/{sid}/borrar"
+    assert client.post(url, json={"motivo": "Ya no vale"}, headers=auth(smod)).status_code == 409  # todavía pendiente
+    client.post(f"/api/v1/sugerencias/{sid}/aceptar", json={}, headers=auth(smod))
+    info = tablas.query(Informacion).one()
+
+    assert client.post(url, json={"motivo": "Ya no vale"}, headers=auth(mod)).status_code == 403
+    r = client.post(url, json={"motivo": "El aula volvió a ser la 101"}, headers=auth(smod))
+    assert r.status_code == 200 and r.json()["estado"] == "BORRADA" and r.json()["motivo"] == "El aula volvió a ser la 101"
+    tablas.refresh(info)
+    assert info.estado.value == "REEMPLAZADA"
+    assert tablas.query(Publicacion).one().vigente is False
+    borradas = client.get("/api/v1/sugerencias/?estado=BORRADA", headers=auth(smod)).json()
+    assert [s["id"] for s in borradas] == [sid]
+
+    cambio = client.get("/api/v1/historial", params={"tabla": "sugerencias", "accion": "baja"}, headers=auth(admin)).json()["items"][0]
+    assert cambio["usuario_id"] == smod.id and cambio["deshacible"]
+    assert client.post(f"/api/v1/historial/{cambio['id']}/deshacer", headers=auth(admin)).status_code == 200
+    tablas.expire_all()
+    assert tablas.get(Sugerencia, sid).estado.value == "ACEPTADA"
+    assert tablas.get(Informacion, info.id).estado.value == "PROBABLE"
+    assert tablas.query(Publicacion).one().vigente is True
+
+
 def test_mod_rechaza_con_motivo(client, tablas, crear_usuario):
     alumno = crear_usuario("alumno@alu.frt.utn.edu.ar")
     mod = crear_usuario("mod@doc.frt.utn.edu.ar", RolEnum.SMOD)

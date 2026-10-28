@@ -39,6 +39,8 @@ NOMBRES_TABLA = {
     "usuarios": "Usuarios",
     "sugerencias": "Sugerencias",
     "importaciones": "Importación de archivo",
+    "reportes": "Reportes",
+    "fuentes": "Fuentes",
 }
 
 DESHACIBLES = {
@@ -47,6 +49,8 @@ DESHACIBLES = {
     ("documentos_importantes", "creacion"), ("documentos_importantes", "actualizacion"),
     ("documentos_importantes", "eliminacion"),
     ("usuarios", "actualizacion"),
+    ("sugerencias", "baja"),
+    ("reportes", "ocultar"), ("reportes", "descartar"), ("fuentes", "actualizacion"),
     ("importaciones", "creacion"),
 }
 
@@ -194,6 +198,45 @@ def _deshacer_usuario(db: Session, r: RegistroCambios) -> tuple[dict | None, dic
     return actual, r.valor_anterior
 
 
+def _deshacer_borrado_sugerencia(db: Session, r: RegistroCambios) -> tuple[dict | None, dict | None]:
+    """La sugerencia vuelve a estar aceptada y el chat a usarla."""
+    from app.models.ingesta import Publicacion
+    from app.models.sugerencia import EstadoSugerenciaEnum as S, Sugerencia
+    s = db.get(Sugerencia, r.registro_id)
+    if not s:
+        _conflicto("Esa sugerencia ya no existe")
+    actual = {"titulo": s.titulo, "estado": s.estado.value, "motivo": s.motivo}
+    s.estado, s.motivo = S.ACEPTADA, r.valor_anterior.get("motivo")
+    ultima = (db.query(Publicacion).filter(Publicacion.id_externo == f"sugerencia:{s.id}")
+              .order_by(Publicacion.id.desc()).first())
+    if ultima:
+        ultima.vigente = True
+    for info_id, estado in (r.valor_anterior.get("informaciones") or {}).items():
+        info = db.get(Informacion, int(info_id))
+        if info and info.estado.value != estado:
+            info.estado = E(estado)
+            db.add(Verificacion(informacion_id=info.id, resultado=info.estado, puntuacion=info.confianza,
+                                explicacion="Borrado de la sugerencia deshecho desde el historial de cambios"))
+    return actual, {"titulo": s.titulo, "estado": S.ACEPTADA.value}
+
+
+def _deshacer_reporte(db: Session, r: RegistroCambios) -> tuple[dict | None, dict | None]:
+    """El reporte vuelve a quedar pendiente y la información sacada del chat vuelve a usarse."""
+    from app.models.voto import Voto
+    voto = db.get(Voto, r.registro_id)
+    if not voto:
+        _conflicto("Ese reporte ya no existe")
+    actual = {"titulo": f"Reporte #{voto.id}", "revisado": voto.revisado, "resolucion": voto.resolucion}
+    voto.revisado, voto.revisor_id, voto.resolucion = False, None, None
+    for info_id, estado in (r.valor_anterior.get("informaciones") or {}).items():
+        info = db.get(Informacion, int(info_id))
+        if info and info.estado.value != estado:
+            info.estado = E(estado)
+            db.add(Verificacion(informacion_id=info.id, resultado=info.estado, puntuacion=info.confianza,
+                                explicacion="Resolución del reporte deshecha desde el historial de cambios"))
+    return actual, {"titulo": f"Reporte #{voto.id}", "revisado": False}
+
+
 def _deshacer_importacion(db: Session, r: RegistroCambios) -> tuple[dict | None, dict | None]:
     creados = (r.valor_nuevo or {}).get("creados", {})
     for tabla, ids in creados.items():
@@ -221,8 +264,9 @@ def deshacer(db: Session, r: RegistroCambios, usuario) -> RegistroCambios:
         posterior = (
             db.query(RegistroCambios)
             .filter(RegistroCambios.tabla_afectada == r.tabla_afectada, RegistroCambios.registro_id == r.registro_id,
-                    RegistroCambios.id > r.id, RegistroCambios.accion != "deshacer",
-                    RegistroCambios.deshecho_por_id.is_(None))
+                    RegistroCambios.id > r.id, RegistroCambios.deshecho_por_id.is_(None),
+                    # Solo cuentan los cambios posteriores que se pueden deshacer (no un cambio de contraseña)
+                    RegistroCambios.accion.in_([a for t, a in DESHACIBLES if t == r.tabla_afectada]))
             .first()
         )
         if posterior:
@@ -243,6 +287,13 @@ def deshacer(db: Session, r: RegistroCambios, usuario) -> RegistroCambios:
         antes, despues = _deshacer_documento(db, r)
     elif r.tabla_afectada == "usuarios":
         antes, despues = _deshacer_usuario(db, r)
+    elif r.tabla_afectada == "sugerencias":
+        antes, despues = _deshacer_borrado_sugerencia(db, r)
+    elif r.tabla_afectada == "reportes":
+        antes, despues = _deshacer_reporte(db, r)
+    elif r.tabla_afectada == "fuentes":
+        from app.models.ingesta import Fuente
+        antes, despues = _deshacer_simple(db, Fuente, r.registro_id, r.accion, r.valor_anterior, r.valor_nuevo)
     else:
         antes, despues = _deshacer_importacion(db, r)
 

@@ -11,7 +11,7 @@
  */
 import { useEffect, useState } from 'react'
 import {
-  aceptarSugerencia, analizarArchivo, autoresDeCambios, cambiarRol, cargarInformacion, cargarParo, confirmarImportacion,
+  aceptarSugerencia, analizarArchivo, borrarSugerencia, autoresDeCambios, cambiarRol, cargarInformacion, cargarParo, confirmarImportacion,
   darDeBajaInformacion, deshacerCambio, levantarSuspension, listarCambios, listarParos, listarReportes,
   listarSugerencias, listarUsuarios, obtenerResumen, rechazarSugerencia, resolverReporte, resumenVotos,
   suspenderUsuario,
@@ -19,7 +19,7 @@ import {
 import Calendario from './Calendario'
 import GrillaHorarios from './GrillaHorarios'
 import GrillaMesas from './GrillaMesas'
-import { boton, campo, errorDe, fechaHora, tarjeta, confirmar } from './ui'
+import { boton, campo, errorDe, fechaHora, tarjeta, confirmar, pedirTexto } from './ui'
 
 // ── Resumen ───────────────────────────────────────────────────────────────────
 
@@ -409,7 +409,7 @@ function TarjetaSugerencia({ s, onRevisada }) {
   )
 }
 
-const FILTROS_SUGERENCIAS = [['PENDIENTE', 'Pendientes'], ['ACEPTADA', 'Aceptadas'], ['RECHAZADA', 'Rechazadas']]
+const FILTROS_SUGERENCIAS = [['PENDIENTE', 'Pendientes'], ['ACEPTADA', 'Aceptadas'], ['RECHAZADA', 'Rechazadas'], ['BORRADA', 'Borradas']]
 
 function Sugerencias() {
   const [estado, setEstado] = useState('PENDIENTE')
@@ -427,6 +427,19 @@ function Sugerencias() {
     setAviso(s.estado === 'ACEPTADA'
       ? `«${s.titulo}» publicada${s.informacion_estado ? ` (${s.informacion_estado})` : ''}: ya la usa el chat.`
       : `«${s.titulo}» rechazada.`)
+  }
+
+  async function borrar(s) {
+    const motivo = await pedirTexto(`«${s.titulo}» deja de usarse en el chat. Queda en el historial de cambios.`,
+                                    { titulo: '¿Borrar esta sugerencia?', placeholder: 'Motivo (obligatorio)' })
+    if (!motivo) return
+    try {
+      await borrarSugerencia(s.id, motivo)
+      setLista(prev => prev.filter(x => x.id !== s.id))
+      setAviso(`«${s.titulo}» borrada: el chat ya no la usa.`)
+    } catch (err) {
+      setError(errorDe(err, 'No se pudo borrar'))
+    }
   }
 
   return (
@@ -453,6 +466,11 @@ function Sugerencias() {
                 <p className="text-xs text-[#8b8b93] mt-0.5">{s.autor} · revisada {fechaHora(s.revisada_en)}</p>
                 <p className="text-xs text-[#a1a1aa] mt-1 whitespace-pre-line">{s.contenido}</p>
                 {s.motivo && <p className="text-xs text-red-400 mt-1">Motivo: {s.motivo}</p>}
+                {estado === 'ACEPTADA' && (
+                  <button onClick={() => borrar(s)} className="text-xs text-red-400 hover:underline mt-2">
+                    Borrar (el chat deja de usarla)
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -703,7 +721,7 @@ const SECCIONES = [
   ['calendario_eventos', 'Calendario'], ['mesas_fechas', 'Mesas: fechas'], ['mesas_materias', 'Mesas: materias'],
   ['horarios_clases', 'Horarios'], ['informacion', 'Información'], ['paros', 'Paros'],
   ['documentos_importantes', 'Documentos'], ['usuarios', 'Usuarios'], ['sugerencias', 'Sugerencias'],
-  ['importaciones', 'Importación de archivo'],
+  ['importaciones', 'Importación de archivo'], ['reportes', 'Reportes'], ['fuentes', 'Fuentes'],
 ]
 const ACCIONES = {
   creacion: ['Alta', 'bg-emerald-500/15 text-emerald-400'],
@@ -713,6 +731,9 @@ const ACCIONES = {
   aceptacion: ['Aceptada', 'bg-emerald-500/15 text-emerald-400'],
   rechazo: ['Rechazada', 'bg-amber-500/15 text-amber-400'],
   deshacer: ['Deshacer', 'bg-violet-500/15 text-violet-300'],
+  ocultar: ['Sacado del chat', 'bg-red-500/15 text-red-400'],
+  descartar: ['Reporte descartado', 'bg-[#1e1e22] text-[#a1a1aa]'],
+  cambio_clave: ['Cambio de contraseña', 'bg-[#1e1e22] text-[#a1a1aa]'],
 }
 const FILTROS_VACIOS = { usuario_id: '', tabla: '', accion: '', desde: '', hasta: '' }
 

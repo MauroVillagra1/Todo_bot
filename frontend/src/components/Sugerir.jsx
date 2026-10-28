@@ -12,6 +12,7 @@ const ESTADOS = {
   PENDIENTE: { texto: 'En revisión', color: 'bg-amber-500/15 text-amber-400' },
   ACEPTADA:  { texto: 'Aceptada',    color: 'bg-emerald-500/15 text-emerald-400' },
   RECHAZADA: { texto: 'Rechazada',   color: 'bg-red-500/15 text-red-400' },
+  BORRADA:   { texto: 'Dada de baja', color: 'bg-[#1e1e22] text-[#a1a1aa]' },
 }
 
 export default function Sugerir() {
