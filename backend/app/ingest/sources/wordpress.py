@@ -9,6 +9,7 @@ Config de la fuente:
   tipos        colecciones de contenido a leer (["posts", "pages"])
   pdfs         true → también descarga los PDFs de la biblioteca de medios
   excluir_pdf  regex sobre el nombre del archivo para no descargarlo (ej. CVs)
+  excluir_titulo  regex sobre el título: páginas de prueba o borradores que no se cargan
 """
 import re
 import time
@@ -69,10 +70,13 @@ class WordPressSource(Source):
 
     def obtener_cambios(self, desde: datetime | None) -> Iterator[ItemCrudo]:
         api = self.config["api"].rstrip("/")
+        excluir = re.compile(self.config["excluir_titulo"]) if self.config.get("excluir_titulo") else None
         with self._cliente() as client:
             for tipo in self.config.get("tipos", ["posts"]):
                 campos = {"_fields": "id,link,title,content,date_gmt,modified_gmt"}
                 for d in self._paginar(client, f"{api}/{tipo}", campos, desde):
+                    if excluir and excluir.search(unescape(d["title"]["rendered"])):
+                        continue
                     yield ItemCrudo(
                         id_externo=f"{tipo}:{d['id']}",
                         url=d["link"],
