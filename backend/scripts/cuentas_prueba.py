@@ -8,7 +8,10 @@ Si la cuenta ya existe le pone el rango, la reactiva y le cambia la contraseña 
 
 Uso (desde backend/, con la migración 26 aplicada):
     python scripts/cuentas_prueba.py
-La contraseña se pide por consola sin mostrarla; también se puede pasar en PRUEBA_PASSWORD.
+        La contraseña se pide por consola sin mostrarla; también se puede pasar en PRUEBA_PASSWORD.
+    python scripts/cuentas_prueba.py --misma-clave-que admin@alu.frt.utn.edu.ar
+        Sin escribir la contraseña: las cuentas que faltan se crean con la de esa cuenta
+        (se copia el hash) y las que existen solo se corrigen de rango, sin tocar su contraseña.
 """
 import getpass
 import os
@@ -32,6 +35,9 @@ CUENTAS = [
 
 
 def main() -> None:
+    if "--misma-clave-que" in sys.argv:
+        copiar_de(sys.argv[sys.argv.index("--misma-clave-que") + 1].strip().lower())
+        return
     password = os.environ.get("PRUEBA_PASSWORD") or getpass.getpass("Contraseña de prueba (mín. 8, con un número): ")
     try:
         UsuarioCreate(nombre="Prueba", email=CUENTAS[0][0], password=password)
@@ -53,6 +59,25 @@ def main() -> None:
             else:
                 db.add(Usuario(nombre=nombre, email=email, rol=rol, password_hash=hash_password(password), activo=True))
                 print(f"[OK] {rol.value:<7} creada:      {email}")
+        db.commit()
+    finally:
+        db.close()
+
+
+def copiar_de(origen: str) -> None:
+    db = SessionLocal()
+    try:
+        modelo = db.query(Usuario).filter(Usuario.email == origen).first()
+        if not modelo:
+            sys.exit(f"[ERROR] No existe la cuenta {origen}")
+        for email, nombre, rol in CUENTAS:
+            u = db.query(Usuario).filter(Usuario.email == email).first()
+            if u:
+                u.rol, u.activo, u.baneado_hasta, u.motivo_ban = rol, True, None, None
+                print(f"[OK] {rol.value:<7} ya existía (rango al día, misma contraseña de antes): {email}")
+            else:
+                db.add(Usuario(nombre=nombre, email=email, rol=rol, password_hash=modelo.password_hash, activo=True))
+                print(f"[OK] {rol.value:<7} creada con la contraseña de {origen}: {email}")
         db.commit()
     finally:
         db.close()
