@@ -1,6 +1,6 @@
 """
 Router de administración.
-  GET /api/v1/admin/resumen      → panel (ADM-01) + métricas (OBS-01). MOD y ADMIN.
+  GET /api/v1/admin/resumen      → panel (ADM-01) + métricas (OBS-01). Solo ADMIN.
   GET /api/v1/admin/diagnostico  → estado de la configuración de IA en este
       despliegue. Solo ADMIN. Nunca devuelve la API key, solo si está configurada.
 """
@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.dependencies import require_admin, require_mod
+from app.core.dependencies import require_admin
 from app.models.informacion import EstadoInformacionEnum as E, Informacion
 from app.models.ingesta import Documento, EstadoIngestaEnum, Fuente, Ingesta, Publicacion
 from app.models.metrica import MetricaDiaria
@@ -26,7 +26,7 @@ DIAS_METRICAS = 14
 
 
 @router.get("/resumen")
-def resumen(db: Session = Depends(get_db), _mod=Depends(require_mod)):
+def resumen(db: Session = Depends(get_db), _admin=Depends(require_admin)):
     hace_7_dias = datetime.now(timezone.utc) - timedelta(days=7)
     desde_metricas = date.today() - timedelta(days=DIAS_METRICAS - 1)
 

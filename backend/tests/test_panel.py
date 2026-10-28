@@ -18,7 +18,7 @@ def datos(db):
     engine = db.get_bind()
     for m in (Fuente, Documento, Publicacion, Chunk, Ingesta, MetricaDiaria,
               Informacion, Evidencia, Verificacion, Historial):
-        m.__table__.create(engine)
+        m.__table__.create(engine, checkfirst=True)
     wp = Fuente(nombre="Sistemas FRT", tipo=TipoFuenteEnum.WORDPRESS, url="https://x",
                 confiabilidad_base=100, activa=True, config={})
     wa = Fuente(nombre="Canal WhatsApp 1", tipo=TipoFuenteEnum.WHATSAPP, url="https://x",
@@ -38,8 +38,8 @@ def datos(db):
     return wp, wa
 
 
-def test_mod_ve_el_resumen_del_sistema(client, crear_usuario, datos):
-    mod = crear_usuario("mod@alu.frt.utn.edu.ar", RolEnum.MOD)
+def test_admin_ve_el_resumen_del_sistema(client, crear_usuario, datos):
+    mod = crear_usuario("mod@alu.frt.utn.edu.ar", RolEnum.ADMIN)
     r = client.get("/api/v1/admin/resumen", headers=auth(mod))
     assert r.status_code == 200
     data = r.json()
@@ -69,7 +69,7 @@ def test_admin_activa_fuente_y_cambia_confiabilidad(client, crear_usuario, datos
     assert fuera_de_rango.status_code == 422
 
 
-@pytest.mark.parametrize("rol", [RolEnum.MIEMBRO, RolEnum.MOD])
+@pytest.mark.parametrize("rol", [RolEnum.MIEMBRO, RolEnum.MOD, RolEnum.SMOD])
 def test_solo_admin_modifica_fuentes(client, crear_usuario, datos, rol):
     _, wa = datos
     u = crear_usuario("u@alu.frt.utn.edu.ar", rol)

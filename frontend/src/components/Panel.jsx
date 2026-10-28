@@ -1,22 +1,20 @@
 /**
- * Panel — MOD y ADMIN.
- *   Resumen   → estado del sistema y métricas (ADM-01, OBS-01)
- *   Cargar    → avisos de paro (abierta/cerrada según el tipo) e información con tipo, texto y link opcional
- *   Fuentes   → carga manual de publicaciones; ADMIN además activa/desactiva y ajusta confiabilidad
- *   Sugerencias → datos propuestos por usuarios: aceptar (con correcciones) o rechazar con motivo
- *   Reportes  → respuestas votadas como "dato incorrecto": sacar ese dato del chat o descartar
- *   Horarios  → solo ADMIN: grilla año → comisión → materias, editable (GrillaHorarios)
- *   Mesas     → solo ADMIN: fechas de examen por turno y materias con su tribunal (GrillaMesas)
- *   Calendario → solo ADMIN: calendario académico editable (Calendario)
- *   Usuarios  → solo ADMIN: listar/buscar, dar o quitar MOD, suspender (temporal o permanente)
+ * Panel — lo que ve cada rango:
+ *   MOD   → Cargar: solo el formulario "Cargar información"
+ *   SMOD  → Cargar (+ paros: próximos y pasados, sin dos paros el mismo día), Sugerencias,
+ *           Horarios, Mesas, Calendario y Usuarios (solo dar o quitar MOD). Los documentos se
+ *           suben, editan y borran desde la sección Documentos del menú.
+ *   ADMIN → todo lo anterior + Resumen, Reportes, Usuarios (rangos MIEMBRO/MOD/SMOD y suspensiones),
+ *           Historial (cambios filtrables por usuario, sección y fecha; se pueden deshacer) e
+ *           Importar (sube un archivo, la IA lo interpreta y se carga en la base tras revisarlo)
  * La UI solo oculta lo que no corresponde: los permisos reales se validan en el backend.
  */
 import { useEffect, useState } from 'react'
 import {
-  aceptarSugerencia, actualizarFuente, cambiarRol, cargarInformacion, cargarParo, cargarPublicacionManual, darDeBajaInformacion,
-  listarAvisos, levantarSuspension,
-  listarFuentes, listarReportes, listarSugerencias, listarUsuarios, obtenerResumen, rechazarSugerencia,
-  resolverReporte, resumenVotos, suspenderUsuario,
+  aceptarSugerencia, analizarArchivo, autoresDeCambios, cambiarRol, cargarInformacion, cargarParo, confirmarImportacion,
+  darDeBajaInformacion, deshacerCambio, levantarSuspension, listarCambios, listarParos, listarReportes,
+  listarSugerencias, listarUsuarios, obtenerResumen, rechazarSugerencia, resolverReporte, resumenVotos,
+  suspenderUsuario,
 } from '../api'
 import Calendario from './Calendario'
 import GrillaHorarios from './GrillaHorarios'
@@ -150,146 +148,9 @@ function Resumen() {
   )
 }
 
-// ── Fuentes ───────────────────────────────────────────────────────────────────
-
 const hoy = () => new Date().toISOString().split('T')[0]
-const POSTEO_VACIO = { url: '', titulo: '', contenido: '', fecha_publicacion: hoy() }
-const RESULTADOS = {
-  nuevo:       'Publicación cargada',
-  actualizado: 'Se guardó como versión nueva de la publicación anterior',
-  duplicado:   'Esa publicación ya estaba cargada con el mismo texto',
-}
 
-function CargaManual({ fuentes, onCargada }) {
-  const manuales = fuentes.filter(f => f.carga_manual)
-  const [fuenteId, setFuenteId] = useState('')
-  const [form, setForm] = useState(POSTEO_VACIO)
-  const [enviando, setEnviando] = useState(false)
-  const [mensaje, setMensaje] = useState(null)
-  const cambiar = c => e => setForm(prev => ({ ...prev, [c]: e.target.value }))
-
-  async function enviar(e) {
-    e.preventDefault()
-    setEnviando(true)
-    setMensaje(null)
-    try {
-      const r = await cargarPublicacionManual(fuenteId, form)
-      setMensaje({ ok: true, texto: `${RESULTADOS[r.resultado]} · ${r.tipo ?? ''} · ${r.estado ?? ''}` })
-      if (r.resultado !== 'duplicado') setForm(POSTEO_VACIO)
-      onCargada()
-    } catch (err) {
-      setMensaje({ ok: false, texto: errorDe(err, 'Revisá los datos: link válido, título y texto de al menos 10 caracteres.') })
-    } finally {
-      setEnviando(false)
-    }
-  }
-
-  return (
-    <form onSubmit={enviar} className={`${tarjeta} space-y-3`}>
-      <div>
-        <h3 className="text-sm font-semibold text-[#f4f4f5]">Cargar publicación manual</h3>
-        <p className="text-xs text-[#8b8b93] mt-0.5">
-          Copiá el texto de la publicación y su link. Queda con el estado que corresponde a la confiabilidad de la fuente.
-        </p>
-      </div>
-      <select required value={fuenteId} onChange={e => setFuenteId(e.target.value)} className={campo}>
-        <option value="">Elegí la fuente…</option>
-        {manuales.map(f => <option key={f.id} value={f.id}>{f.nombre} ({f.confiabilidad_base}%)</option>)}
-      </select>
-      <input required type="url" placeholder="Link a la publicación" value={form.url} onChange={cambiar('url')} className={campo} />
-      <input required minLength={3} placeholder="Título" value={form.titulo} onChange={cambiar('titulo')} className={campo} />
-      <textarea required minLength={10} rows={6} placeholder="Texto de la publicación" value={form.contenido}
-                onChange={cambiar('contenido')} className={campo} />
-      <label className="block text-xs text-[#a1a1aa]">
-        Fecha de publicación
-        <input required type="date" value={form.fecha_publicacion} onChange={cambiar('fecha_publicacion')} className={`${campo} mt-1`} />
-      </label>
-      <div className="flex items-center gap-3">
-        <button type="submit" disabled={enviando} className={boton}>{enviando ? 'Cargando…' : 'Cargar'}</button>
-        {mensaje && <span className={`text-xs ${mensaje.ok ? 'text-emerald-400' : 'text-red-400'}`}>{mensaje.texto}</span>}
-      </div>
-    </form>
-  )
-}
-
-function FilaFuente({ fuente, esAdmin, onCambio }) {
-  const [confiabilidad, setConfiabilidad] = useState(fuente.confiabilidad_base)
-  const [error, setError] = useState(null)
-
-  async function guardar(cambios) {
-    setError(null)
-    try { onCambio(await actualizarFuente(fuente.id, cambios)) }
-    catch (err) { setError(errorDe(err, 'No se pudo guardar')) }
-  }
-
-  return (
-    <li className="py-3 text-sm">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <a href={fuente.url} target="_blank" rel="noopener noreferrer" className="font-medium text-[#f4f4f5] hover:underline">
-            {fuente.nombre}
-          </a>
-          <p className="text-xs text-[#8b8b93]">
-            {fuente.carga_manual ? 'Carga manual' : `Automática · última revisión: ${fechaHora(fuente.ultima_revision)}`}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0 text-xs">
-          {esAdmin ? (
-            <>
-              <input type="number" min={0} max={100} value={confiabilidad}
-                     onChange={e => setConfiabilidad(Number(e.target.value))}
-                     onBlur={() => confiabilidad !== fuente.confiabilidad_base && guardar({ confiabilidad_base: confiabilidad })}
-                     className="w-16 bg-[#141417] border border-[#232327] text-[#f4f4f5] rounded-lg px-2 py-1" title="Confiabilidad base (%)" />
-              <button onClick={() => guardar({ activa: !fuente.activa })}
-                      className={`px-2 py-1 rounded-full ${fuente.activa ? 'bg-emerald-500/15 text-emerald-400' : 'bg-[#1e1e22] text-[#8b8b93]'}`}>
-                {fuente.activa ? 'Activa' : 'Inactiva'}
-              </button>
-            </>
-          ) : (
-            <>
-              <span className="text-[#8b8b93]">{fuente.confiabilidad_base}%</span>
-              <span className={`px-2 py-0.5 rounded-full ${fuente.activa ? 'bg-emerald-500/15 text-emerald-400' : 'bg-[#1e1e22] text-[#8b8b93]'}`}>
-                {fuente.activa ? 'Activa' : 'Inactiva'}
-              </span>
-            </>
-          )}
-        </div>
-      </div>
-      {error && <p className="text-xs text-red-400 mt-1">{error}</p>}
-    </li>
-  )
-}
-
-// Instagram y WhatsApp quedan fuera del proyecto por ahora: solo se ocultan acá, el backend sigue igual
-const TIPOS_OCULTOS = ['INSTAGRAM', 'WHATSAPP']
-
-function Fuentes({ esAdmin }) {
-  const [fuentes, setFuentes] = useState([])
-  const [error, setError] = useState(null)
-  const cargar = () => listarFuentes()
-    .then(lista => setFuentes(lista.filter(f => !TIPOS_OCULTOS.includes(f.tipo))))
-    .catch(e => setError(errorDe(e, 'No se pudieron cargar las fuentes.')))
-  useEffect(() => { cargar() }, [])
-
-  return (
-    <div className="space-y-6">
-      {error && <p className="text-sm text-red-400">{error}</p>}
-      <CargaManual fuentes={fuentes} onCargada={cargar} />
-      <div className={tarjeta}>
-        <h3 className="text-sm font-semibold text-[#f4f4f5] mb-1">Fuentes</h3>
-        {esAdmin && <p className="text-xs text-[#8b8b93]">Cambiá la confiabilidad (0-100) o activá/desactivá con un clic.</p>}
-        <ul className="divide-y divide-[#1e1e22]">
-          {fuentes.map(f => (
-            <FilaFuente key={f.id} fuente={f} esAdmin={esAdmin}
-                        onCambio={nueva => setFuentes(prev => prev.map(x => (x.id === nueva.id ? nueva : x)))} />
-          ))}
-        </ul>
-      </div>
-    </div>
-  )
-}
-
-// ── Cargar (MOD y ADMIN): paros e información directa ─────────────────────────
+// ── Cargar: información (MOD, SMOD y ADMIN) y paros (SMOD y ADMIN) ───────────
 
 const TIPOS_PARO = [
   ['DOCENTE',    'Docente',              'La facultad está abierta'],
@@ -425,44 +286,71 @@ function FormInformacion() {
   )
 }
 
-function ParosVigentes({ version }) {
-  const [paros, setParos] = useState([])
+const fechaCorta = iso => (iso ? new Date(`${iso}T12:00:00`).toLocaleDateString('es-AR') : '?')
+
+function FilaParo({ p, onBaja }) {
+  return (
+    <li className="py-2 flex items-center justify-between gap-3 text-sm">
+      <span className="min-w-0">
+        <span className="text-[#f4f4f5]">{p.titulo}</span>
+        <span className="block text-xs text-[#8b8b93]">
+          {fechaCorta(p.fecha_inicio)}{p.fecha_fin && p.fecha_fin !== p.fecha_inicio ? ` al ${fechaCorta(p.fecha_fin)}` : ''}
+        </span>
+      </span>
+      {onBaja && <button onClick={() => onBaja(p)} className="text-xs text-red-400 hover:underline flex-shrink-0">Dar de baja</button>}
+    </li>
+  )
+}
+
+/** Paros próximos (se muestran arriba del chat) y los que ya pasaron. */
+function ListaParos({ version }) {
+  const [lista, setLista] = useState(null)
+  const [verPasados, setVerPasados] = useState(false)
   const [error, setError] = useState(null)
-  useEffect(() => { listarAvisos().then(setParos).catch(() => {}) }, [version])
+  useEffect(() => { listarParos().then(setLista).catch(e => setError(errorDe(e, 'No se pudieron cargar los paros.'))) }, [version])
+
   async function baja(p) {
     if (!confirm(`¿Dar de baja «${p.titulo}»? Deja de mostrarse y el chat no lo responde más.`)) return
-    try { await darDeBajaInformacion(p.informacion_id); setParos(prev => prev.filter(x => x.informacion_id !== p.informacion_id)) }
-    catch (err) { setError(errorDe(err, 'No se pudo dar de baja')) }
+    try {
+      await darDeBajaInformacion(p.informacion_id)
+      setLista(prev => ({ ...prev, proximos: prev.proximos.filter(x => x.informacion_id !== p.informacion_id) }))
+    } catch (err) { setError(errorDe(err, 'No se pudo dar de baja')) }
   }
-  if (!paros.length) return null
+
   return (
     <div className={tarjeta}>
-      <h3 className="text-sm font-semibold text-[#f4f4f5] mb-2">Paros vigentes (se muestran arriba del chat)</h3>
-      <ul className="divide-y divide-[#1e1e22]">
-        {paros.map(p => (
-          <li key={p.informacion_id} className="py-2 flex items-center justify-between gap-3 text-sm">
-            <span className="text-[#f4f4f5]">{p.titulo}</span>
-            <button onClick={() => baja(p)} className="text-xs text-red-400 hover:underline flex-shrink-0">Dar de baja</button>
-          </li>
-        ))}
-      </ul>
-      {error && <p className="text-xs text-red-400 mt-1">{error}</p>}
+      <h3 className="text-sm font-semibold text-[#f4f4f5] mb-1">Paros próximos</h3>
+      <p className="text-xs text-[#8b8b93]">Se muestran arriba del chat. No se puede cargar otro paro en un día que ya tiene uno.</p>
+      {!lista ? <p className="text-sm text-[#8b8b93] mt-2">{error ?? 'Cargando…'}</p> : (
+        <>
+          {lista.proximos.length === 0
+            ? <p className="text-sm text-[#8b8b93] mt-2">No hay paros cargados de hoy en adelante.</p>
+            : <ul className="divide-y divide-[#1e1e22]">{lista.proximos.map(p => <FilaParo key={p.informacion_id} p={p} onBaja={baja} />)}</ul>}
+          <button onClick={() => setVerPasados(v => !v)} className="text-xs text-[#f2894f] hover:underline mt-3">
+            {verPasados ? 'Ocultar' : 'Ver'} paros que ya pasaron ({lista.pasados.length})
+          </button>
+          {verPasados && (
+            <ul className="divide-y divide-[#1e1e22] opacity-80">{lista.pasados.map(p => <FilaParo key={p.informacion_id} p={p} />)}</ul>
+          )}
+          {error && <p className="text-xs text-red-400 mt-1">{error}</p>}
+        </>
+      )}
     </div>
   )
 }
 
-function Cargar() {
+function Cargar({ conParos }) {
   const [version, setVersion] = useState(0)
   return (
     <div className="space-y-6">
-      <ParosVigentes version={version} />
-      <FormParo onCargado={() => setVersion(v => v + 1)} />
+      {conParos && <ListaParos version={version} />}
+      {conParos && <FormParo onCargado={() => setVersion(v => v + 1)} />}
       <FormInformacion />
     </div>
   )
 }
 
-// ── Sugerencias (MOD y ADMIN) ─────────────────────────────────────────────────
+// ── Sugerencias (SMOD y ADMIN) ────────────────────────────────────────────────
 
 function TarjetaSugerencia({ s, onRevisada }) {
   const [titulo, setTitulo] = useState(s.titulo)
@@ -572,7 +460,7 @@ function Sugerencias() {
   )
 }
 
-// ── Reportes de "dato incorrecto" (MOD y ADMIN) ───────────────────────────────
+// ── Reportes de "dato incorrecto" (solo ADMIN) ────────────────────────────────
 
 function TarjetaReporte({ r, onResuelto }) {
   const [elegidas, setElegidas] = useState(() => r.informaciones.map(i => i.id))
@@ -669,10 +557,11 @@ function Reportes() {
   )
 }
 
-// ── Usuarios (ADMIN) ──────────────────────────────────────────────────────────
+// ── Usuarios (SMOD: dar o quitar MOD; ADMIN: rangos y suspensiones) ───────────
 
 const DURACIONES = [['1', '1 día'], ['3', '3 días'], ['7', '7 días'], ['30', '30 días'], ['', 'Permanente']]
-const ROLES = { ADMIN: 'Admin', MOD: 'Moderador', MIEMBRO: 'Miembro' }
+const ROLES = { ADMIN: 'Admin', SMOD: 'Super mod', MOD: 'Moderador', MIEMBRO: 'Miembro' }
+const RANGOS_ASIGNABLES = ['MIEMBRO', 'MOD', 'SMOD']
 
 function estadoCuenta(u) {
   if (!u.activo) return { texto: 'Baneado', color: 'bg-red-500/15 text-red-400' }
@@ -681,7 +570,7 @@ function estadoCuenta(u) {
   return { texto: 'Activo', color: 'bg-emerald-500/15 text-emerald-400' }
 }
 
-function FilaUsuario({ u, onCambio }) {
+function FilaUsuario({ u, onCambio, esAdmin: actorAdmin }) {
   const [suspendiendo, setSuspendiendo] = useState(false)
   const [dias, setDias] = useState('7')
   const [motivo, setMotivo] = useState('')
@@ -713,13 +602,22 @@ function FilaUsuario({ u, onCambio }) {
           <span className={`px-2 py-0.5 rounded-full ${estado.color}`}>{estado.texto}</span>
           {esAdmin ? (
             <span className="px-2 py-0.5 rounded-full bg-[#e8592e]/15 text-[#f2894f]">Admin</span>
+          ) : actorAdmin ? (
+            <select value={u.rol} onChange={e => hacer(() => cambiarRol(u.id, e.target.value))}
+                    className={`${campo} !w-auto !py-1 text-xs`} title="Rango">
+              {RANGOS_ASIGNABLES.map(r => <option key={r} value={r}>{ROLES[r]}</option>)}
+            </select>
+          ) : u.rol === 'SMOD' ? (
+            <span className="px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300">Super mod</span>
           ) : (
+            <button onClick={() => hacer(() => cambiarRol(u.id, u.rol === 'MOD' ? 'MIEMBRO' : 'MOD'))}
+                    className={`px-2 py-1 rounded-lg border ${u.rol === 'MOD'
+                      ? 'border-sky-500/30 text-sky-400 hover:bg-sky-500/10' : 'border-[#232327] text-[#a1a1aa] hover:text-[#f4f4f5]'}`}>
+              {u.rol === 'MOD' ? 'Quitar MOD' : 'Hacer MOD'}
+            </button>
+          )}
+          {actorAdmin && !esAdmin && (
             <>
-              <button onClick={() => hacer(() => cambiarRol(u.id, u.rol === 'MOD' ? 'MIEMBRO' : 'MOD'))}
-                      className={`px-2 py-1 rounded-lg border ${u.rol === 'MOD'
-                        ? 'border-sky-500/30 text-sky-400 hover:bg-sky-500/10' : 'border-[#232327] text-[#a1a1aa] hover:text-[#f4f4f5]'}`}>
-                {u.rol === 'MOD' ? 'Quitar MOD' : 'Hacer MOD'}
-              </button>
               {sancionado ? (
                 <button onClick={() => hacer(() => levantarSuspension(u.id))}
                         className="px-2 py-1 rounded-lg text-emerald-400 hover:bg-emerald-500/10">
@@ -753,7 +651,7 @@ function FilaUsuario({ u, onCambio }) {
   )
 }
 
-function Usuarios() {
+function Usuarios({ esAdmin }) {
   const [usuarios, setUsuarios] = useState(null)
   const [q, setQ] = useState('')
   const [rol, setRol] = useState('')
@@ -782,12 +680,13 @@ function Usuarios() {
       <div className={tarjeta}>
         <h3 className="text-sm font-semibold text-[#f4f4f5] mb-1">Usuarios {usuarios && `(${usuarios.length})`}</h3>
         <p className="text-xs text-[#8b8b93]">
-          Las cuentas se crean con el registro (mail institucional). Las cuentas Admin no se modifican desde acá.
+          Las cuentas se crean con el registro (mail institucional; los docentes entran como Moderador).
+          {esAdmin ? ' Las cuentas Admin no se modifican desde acá.' : ' Podés dar o quitar el rango de Moderador.'}
         </p>
         {!usuarios ? <p className="text-sm text-[#8b8b93] mt-3">Cargando…</p> : (
           <ul className="divide-y divide-[#1e1e22]">
             {usuarios.map(u => (
-              <FilaUsuario key={u.id} u={u}
+              <FilaUsuario key={u.id} u={u} esAdmin={esAdmin}
                            onCambio={nuevo => setUsuarios(prev => prev.map(x => (x.id === nuevo.id ? nuevo : x)))} />
             ))}
           </ul>
@@ -797,25 +696,350 @@ function Usuarios() {
   )
 }
 
+// ── Historial de cambios (ADMIN) ──────────────────────────────────────────────
+
+const SECCIONES = [
+  ['calendario_eventos', 'Calendario'], ['mesas_fechas', 'Mesas: fechas'], ['mesas_materias', 'Mesas: materias'],
+  ['horarios_clases', 'Horarios'], ['informacion', 'Información'], ['paros', 'Paros'],
+  ['documentos_importantes', 'Documentos'], ['usuarios', 'Usuarios'], ['sugerencias', 'Sugerencias'],
+  ['importaciones', 'Importación de archivo'],
+]
+const ACCIONES = {
+  creacion: ['Alta', 'bg-emerald-500/15 text-emerald-400'],
+  actualizacion: ['Edición', 'bg-sky-500/15 text-sky-400'],
+  eliminacion: ['Borrado', 'bg-red-500/15 text-red-400'],
+  baja: ['Baja', 'bg-red-500/15 text-red-400'],
+  aceptacion: ['Aceptada', 'bg-emerald-500/15 text-emerald-400'],
+  rechazo: ['Rechazada', 'bg-amber-500/15 text-amber-400'],
+  deshacer: ['Deshacer', 'bg-violet-500/15 text-violet-300'],
+}
+const FILTROS_VACIOS = { usuario_id: '', tabla: '', accion: '', desde: '', hasta: '' }
+
+function Foto({ titulo, datos }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[#8b8b93] mb-1">{titulo}</p>
+      <pre className="bg-[#141417] border border-[#232327] rounded-lg p-2 whitespace-pre-wrap break-words text-[#c7c7cf]">
+        {datos ? JSON.stringify(datos, null, 2) : '—'}
+      </pre>
+    </div>
+  )
+}
+
+function FilaCambio({ c, onDeshecho }) {
+  const [abierto, setAbierto] = useState(false)
+  const [enviando, setEnviando] = useState(false)
+  const [error, setError] = useState(null)
+  const [accion, color] = ACCIONES[c.accion] ?? [c.accion, 'bg-[#1e1e22] text-[#a1a1aa]']
+
+  async function deshacer() {
+    if (!confirm(`¿Deshacer este cambio?\n${c.seccion}: ${c.resumen}`)) return
+    setEnviando(true)
+    setError(null)
+    try { onDeshecho(c.id, await deshacerCambio(c.id)) }
+    catch (err) { setError(errorDe(err, 'No se pudo deshacer')) }
+    finally { setEnviando(false) }
+  }
+
+  return (
+    <li className="py-3 text-sm space-y-1">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs text-[#8b8b93]">
+            {fechaHora(c.fecha)} · {c.usuario} · <span className={`px-1.5 py-0.5 rounded-full ${color}`}>{accion}</span>
+            {' '}· {c.seccion}
+          </p>
+          <p className={`mt-1 break-words ${c.deshecho_por_id ? 'text-[#8b8b93] line-through' : 'text-[#f4f4f5]'}`}>{c.resumen}</p>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0 text-xs">
+          <button onClick={() => setAbierto(v => !v)} className="text-[#8b8b93] hover:text-[#f4f4f5]">
+            {abierto ? 'Ocultar' : 'Detalle'}
+          </button>
+          {c.deshecho_por_id ? (
+            <span className="px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300">Deshecho</span>
+          ) : c.deshacible && (
+            <button disabled={enviando} onClick={deshacer}
+                    className="px-2 py-1 rounded-lg border border-[#232327] text-[#f2894f] hover:bg-[#e8592e]/10 disabled:opacity-50">
+              {enviando ? 'Deshaciendo…' : 'Deshacer'}
+            </button>
+          )}
+        </div>
+      </div>
+      {abierto && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+          <Foto titulo="Antes" datos={c.valor_anterior} />
+          <Foto titulo="Después" datos={c.valor_nuevo} />
+        </div>
+      )}
+      {error && <p className="text-xs text-red-400">{error}</p>}
+    </li>
+  )
+}
+
+function Historial() {
+  const [filtros, setFiltros] = useState(FILTROS_VACIOS)
+  const [autores, setAutores] = useState([])
+  const [pagina, setPagina] = useState(null)  // { items, total, page }
+  const [error, setError] = useState(null)
+  const filtrar = c => e => setFiltros(prev => ({ ...prev, [c]: e.target.value }))
+
+  useEffect(() => { autoresDeCambios().then(setAutores).catch(() => {}) }, [])
+  useEffect(() => {
+    setPagina(null)
+    setError(null)
+    listarCambios(filtros).then(setPagina).catch(e => setError(errorDe(e, 'No se pudo cargar el historial.')))
+  }, [filtros])
+
+  async function cargarMas() {
+    try {
+      const siguiente = await listarCambios({ ...filtros, page: pagina.page + 1 })
+      setPagina(prev => ({ ...siguiente, items: [...prev.items, ...siguiente.items] }))
+    } catch (err) { setError(errorDe(err, 'No se pudo cargar más.')) }
+  }
+
+  function deshecho(id, nuevo) {
+    setPagina(prev => ({
+      ...prev, total: prev.total + 1,
+      items: [nuevo, ...prev.items.map(c => (c.id === id ? { ...c, deshecho_por_id: nuevo.id, deshacible: false } : c))],
+    }))
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className={`${tarjeta} grid grid-cols-1 sm:grid-cols-5 gap-2`}>
+        <select value={filtros.usuario_id} onChange={filtrar('usuario_id')} className={campo}>
+          <option value="">Todos los usuarios</option>
+          {autores.map(a => <option key={a.id} value={a.id}>{a.nombre} ({a.cambios})</option>)}
+        </select>
+        <select value={filtros.tabla} onChange={filtrar('tabla')} className={campo}>
+          <option value="">Todas las secciones</option>
+          {SECCIONES.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+        </select>
+        <select value={filtros.accion} onChange={filtrar('accion')} className={campo}>
+          <option value="">Todas las acciones</option>
+          {Object.entries(ACCIONES).map(([v, [t]]) => <option key={v} value={v}>{t}</option>)}
+        </select>
+        <label className="text-xs text-[#a1a1aa]">Desde
+          <input type="date" value={filtros.desde} onChange={filtrar('desde')} className={`${campo} mt-1`} />
+        </label>
+        <label className="text-xs text-[#a1a1aa]">Hasta
+          <input type="date" value={filtros.hasta} onChange={filtrar('hasta')} className={`${campo} mt-1`} />
+        </label>
+      </div>
+      {error && <p className="text-sm text-red-400">{error}</p>}
+      <div className={tarjeta}>
+        <div className="flex items-baseline justify-between">
+          <h3 className="text-sm font-semibold text-[#f4f4f5]">Cambios {pagina && `(${pagina.total})`}</h3>
+          {filtros !== FILTROS_VACIOS && (
+            <button onClick={() => setFiltros(FILTROS_VACIOS)} className="text-xs text-[#8b8b93] hover:underline">Limpiar filtros</button>
+          )}
+        </div>
+        <p className="text-xs text-[#8b8b93]">
+          Deshacer vuelve el registro a como estaba. Si hubo un cambio posterior sobre lo mismo, primero deshacé ese.
+        </p>
+        {!pagina ? <p className="text-sm text-[#8b8b93] mt-3">{error ? '' : 'Cargando…'}</p>
+          : pagina.items.length === 0 ? <p className="text-sm text-[#8b8b93] mt-3">No hay cambios con esos filtros.</p>
+          : (
+            <ul className="divide-y divide-[#1e1e22]">
+              {pagina.items.map(c => <FilaCambio key={c.id} c={c} onDeshecho={deshecho} />)}
+            </ul>
+          )}
+        {pagina && pagina.items.length < pagina.total && (
+          <button onClick={cargarMas} className="text-xs text-[#f2894f] hover:underline mt-3">Cargar más</button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Importar archivos (ADMIN) ─────────────────────────────────────────────────
+
+const DIAS = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
+const METODOS = {
+  grilla: ['Grilla de horarios leída del PDF', 'text-emerald-400'],
+  ia: ['Interpretado con IA: revisá cada dato antes de guardar', 'text-amber-400'],
+  texto: ['Sin IA: se propone el texto como una información', 'text-amber-400'],
+}
+const rango = (a, b) => `${fechaCorta(a)}${b && b !== a ? ` al ${fechaCorta(b)}` : ''}`
+const SECCIONES_IMPORTAR = [
+  ['calendario', 'Calendario académico', e => `${rango(e.fecha_inicio, e.fecha_fin)} · ${e.actividad} (${e.categoria})${e.detalle ? ` — ${e.detalle}` : ''}`],
+  ['mesas_fechas', 'Fechas de mesas', f => `Mesa ${f.mesa}${f.turno ? ` · turno ${f.turno}` : ''}: cierre ${fechaCorta(f.cierre_inscripcion)} · examen ${fechaCorta(f.fecha_examen)}`],
+  ['mesas_materias', 'Materias y tribunales', m => `${m.materia} · Mesa ${m.mesa} · ${m.sede}${m.hora ? ` · ${m.hora}` : ''}${[m.presidente, m.vocal1, m.vocal2].some(Boolean) ? ` · ${[m.presidente, m.vocal1, m.vocal2].filter(Boolean).join(', ')}` : ''}`],
+  ['horarios', 'Horarios', h => `${h.comision} · ${DIAS[h.dia]} ${h.inicio}–${h.fin} · ${h.materia}${h.docente ? ` — ${h.docente}` : ''}${h.aula ? ` · aula ${h.aula}` : ''}`],
+]
+const sinMarca = lista => lista.filter(x => x._ok).map(({ _ok, ...x }) => x)
+
+function Importar() {
+  const [archivo, setArchivo] = useState(null)
+  const [analizando, setAnalizando] = useState(false)
+  const [vista, setVista] = useState(null)
+  const [reemplazar, setReemplazar] = useState(true)
+  const [guardando, setGuardando] = useState(false)
+  const [resultado, setResultado] = useState(null)
+  const [error, setError] = useState(null)
+
+  async function analizar(e) {
+    e.preventDefault()
+    setAnalizando(true)
+    setError(null)
+    setResultado(null)
+    setVista(null)
+    try {
+      const v = await analizarArchivo(archivo)
+      const marcar = lista => lista.map(x => ({ ...x, _ok: true }))
+      setVista({ ...v, calendario: marcar(v.calendario), mesas_fechas: marcar(v.mesas_fechas),
+                 mesas_materias: marcar(v.mesas_materias), horarios: marcar(v.horarios), informacion: marcar(v.informacion) })
+    } catch (err) {
+      setError(errorDe(err, 'No se pudo analizar el archivo.'))
+    } finally {
+      setAnalizando(false)
+    }
+  }
+
+  const cambiar = (seccion, i, cambios) =>
+    setVista(prev => ({ ...prev, [seccion]: prev[seccion].map((x, j) => (j === i ? { ...x, ...cambios } : x)) }))
+  const elegidos = vista ? ['calendario', 'mesas_fechas', 'mesas_materias', 'horarios', 'informacion']
+    .reduce((n, s) => n + vista[s].filter(x => x._ok).length, 0) : 0
+
+  async function guardar() {
+    setGuardando(true)
+    setError(null)
+    try {
+      const r = await confirmarImportacion({
+        archivo: vista.archivo, reemplazar_horarios: reemplazar,
+        calendario: sinMarca(vista.calendario), mesas_fechas: sinMarca(vista.mesas_fechas),
+        mesas_materias: sinMarca(vista.mesas_materias), horarios: sinMarca(vista.horarios),
+        informacion: sinMarca(vista.informacion),
+      })
+      setResultado(r)
+      setVista(null)
+      setArchivo(null)
+    } catch (err) {
+      setError(errorDe(err, 'No se pudo guardar. Revisá los datos.'))
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <form onSubmit={analizar} className={`${tarjeta} space-y-3`}>
+        <div>
+          <h3 className="text-sm font-semibold text-[#f4f4f5]">Importar un archivo</h3>
+          <p className="text-xs text-[#8b8b93] mt-0.5">
+            Subí un PDF, Word (.docx), .txt, .csv o .md (hasta 4 MB). Se interpreta y te muestra qué cargaría en el
+            calendario, las mesas, los horarios o como información del chat. Nada se guarda hasta que confirmes,
+            y la importación entera se puede deshacer desde el Historial.
+          </p>
+        </div>
+        <input type="file" accept=".pdf,.docx,.txt,.csv,.md" onChange={e => setArchivo(e.target.files?.[0] ?? null)}
+               className="block text-sm text-[#a1a1aa] file:mr-3 file:rounded-lg file:border-0 file:bg-[#1e1e22] file:px-3 file:py-1.5 file:text-[#f4f4f5]" />
+        <button type="submit" disabled={!archivo || analizando} className={boton}>
+          {analizando ? 'Analizando (puede tardar hasta un minuto)…' : 'Analizar'}
+        </button>
+      </form>
+
+      {error && <p className="text-sm text-red-400">{error}</p>}
+      {resultado && (
+        <p className="text-sm text-emerald-400">
+          Listo: {Object.entries(resultado.creados).map(([t, n]) => `${n} en ${t.replaceAll('_', ' ')}`).join(', ') || 'nada'}
+          {resultado.reemplazados > 0 && ` (se reemplazaron ${resultado.reemplazados} bloques de horario)`}.
+          Ya lo usa el chat. Si algo salió mal, deshacelo en Historial.
+        </p>
+      )}
+
+      {vista && (
+        <div className={`${tarjeta} space-y-4`}>
+          <div>
+            <h3 className="text-sm font-semibold text-[#f4f4f5]">Vista previa de «{vista.archivo}»</h3>
+            <p className={`text-xs mt-0.5 ${METODOS[vista.metodo]?.[1] ?? ''}`}>{METODOS[vista.metodo]?.[0]}</p>
+            {vista.avisos.map((a, i) => <p key={i} className="text-xs text-amber-400 mt-1">⚠ {a}</p>)}
+          </div>
+
+          {SECCIONES_IMPORTAR.filter(([s]) => vista[s].length > 0).map(([s, titulo, texto]) => (
+            <div key={s}>
+              <p className="text-xs font-semibold text-[#a1a1aa] mb-1">{titulo} ({vista[s].filter(x => x._ok).length}/{vista[s].length})</p>
+              <ul className="space-y-1 max-h-72 overflow-y-auto">
+                {vista[s].map((x, i) => (
+                  <li key={i}>
+                    <label className="flex items-start gap-2 text-xs text-[#c7c7cf]">
+                      <input type="checkbox" checked={x._ok} onChange={e => cambiar(s, i, { _ok: e.target.checked })}
+                             className="mt-0.5 accent-[#e8592e]" />
+                      <span className={x._ok ? '' : 'line-through text-[#8b8b93]'}>{texto(x)}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+              {s === 'horarios' && (
+                <label className="flex items-center gap-2 text-xs text-[#a1a1aa] mt-2">
+                  <input type="checkbox" checked={reemplazar} onChange={e => setReemplazar(e.target.checked)} className="accent-[#e8592e]" />
+                  Reemplazar los horarios que ya tienen esas comisiones (recomendado)
+                </label>
+              )}
+            </div>
+          ))}
+
+          {vista.informacion.length > 0 && (
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-[#a1a1aa]">Información para el chat (la primera línea es el título)</p>
+              {vista.informacion.map((x, i) => (
+                <div key={i} className={`space-y-2 border border-[#1e1e22] rounded-xl p-3 ${x._ok ? '' : 'opacity-50'}`}>
+                  <div className="flex flex-wrap items-center gap-3 text-xs">
+                    <label className="flex items-center gap-2 text-[#a1a1aa]">
+                      <input type="checkbox" checked={x._ok} onChange={e => cambiar('informacion', i, { _ok: e.target.checked })}
+                             className="accent-[#e8592e]" />
+                      Cargar
+                    </label>
+                    <select value={x.tipo} onChange={e => cambiar('informacion', i, { tipo: e.target.value })}
+                            className={`${campo} !w-auto !py-1 text-xs`}>
+                      {TIPOS_INFORMACION.map(([id, nombre]) => <option key={id} value={id}>{nombre}</option>)}
+                    </select>
+                    <label className="flex items-center gap-2 text-[#a1a1aa]">
+                      <input type="checkbox" checked={x.sin_vencimiento} className="accent-[#e8592e]"
+                             onChange={e => cambiar('informacion', i, { sin_vencimiento: e.target.checked })} />
+                      No vence
+                    </label>
+                  </div>
+                  <textarea rows={5} value={x.contenido} onChange={e => cambiar('informacion', i, { contenido: e.target.value })}
+                            className={`${campo} text-xs`} />
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center gap-3">
+            <button onClick={guardar} disabled={guardando || elegidos === 0} className={boton}>
+              {guardando ? 'Guardando…' : `Guardar ${elegidos} dato${elegidos === 1 ? '' : 's'}`}
+            </button>
+            <button onClick={() => setVista(null)} className="text-sm text-[#8b8b93] hover:underline">Descartar</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Panel ─────────────────────────────────────────────────────────────────────
 
 export default function Panel({ usuario }) {
-  const esAdmin = usuario?.rol === 'ADMIN'
+  const rol = usuario?.rol
+  const esAdmin = rol === 'ADMIN'
+  const esSmod = esAdmin || rol === 'SMOD'
   const tabs = [
-    { id: 'resumen', label: 'Resumen' },
+    ...(esAdmin ? [{ id: 'resumen', label: 'Resumen' }] : []),
     { id: 'cargar', label: 'Cargar' },
-    { id: 'fuentes', label: 'Fuentes' },
-    { id: 'sugerencias', label: 'Sugerencias' },
-    { id: 'reportes', label: 'Reportes' },
-    ...(esAdmin ? [{ id: 'horarios', label: 'Horarios' }, { id: 'mesas', label: 'Mesas' },
-                   { id: 'calendario', label: 'Calendario' }, { id: 'usuarios', label: 'Usuarios' }] : []),
+    ...(esSmod ? [{ id: 'sugerencias', label: 'Sugerencias' }] : []),
+    ...(esAdmin ? [{ id: 'reportes', label: 'Reportes' }] : []),
+    ...(esSmod ? [{ id: 'horarios', label: 'Horarios' }, { id: 'mesas', label: 'Mesas' },
+                  { id: 'calendario', label: 'Calendario' }, { id: 'usuarios', label: 'Usuarios' }] : []),
+    ...(esAdmin ? [{ id: 'historial', label: 'Historial' }, { id: 'importar', label: 'Importar' }] : []),
   ]
-  const [tab, setTab] = useState('resumen')
+  const [tab, setTab] = useState(tabs[0].id)
 
   return (
     <div className="flex flex-col h-full bg-[#0a0a0c] text-[#f4f4f5] font-body [color-scheme:dark]">
       <div className="bg-[#0d0d10] border-b border-[#1e1e22] px-6 pt-4">
-        <h2 className="font-display text-base font-semibold text-[#f4f4f5]">Panel de administración</h2>
+        <h2 className="font-display text-base font-semibold text-[#f4f4f5]">{esAdmin ? 'Panel de administración' : 'Panel'}</h2>
         <div className="flex gap-1 mt-2 overflow-x-auto">
           {tabs.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
@@ -827,16 +1051,17 @@ export default function Panel({ usuario }) {
         </div>
       </div>
       <div className="flex-1 overflow-y-auto p-6">
-        <div className={`${['horarios', 'mesas', 'calendario'].includes(tab) ? 'max-w-6xl' : 'max-w-3xl'} mx-auto`}>
-          {tab === 'resumen' && <Resumen />}
-          {tab === 'cargar' && <Cargar />}
-          {tab === 'fuentes' && <Fuentes esAdmin={esAdmin} />}
-          {tab === 'sugerencias' && <Sugerencias />}
-          {tab === 'reportes' && <Reportes />}
-          {tab === 'horarios' && esAdmin && <GrillaHorarios />}
-          {tab === 'mesas' && esAdmin && <GrillaMesas />}
-          {tab === 'calendario' && esAdmin && <Calendario editable />}
-          {tab === 'usuarios' && esAdmin && <Usuarios />}
+        <div className={`${['horarios', 'mesas', 'calendario', 'historial', 'importar'].includes(tab) ? 'max-w-6xl' : 'max-w-3xl'} mx-auto`}>
+          {tab === 'resumen' && esAdmin && <Resumen />}
+          {tab === 'cargar' && <Cargar conParos={esSmod} />}
+          {tab === 'sugerencias' && esSmod && <Sugerencias />}
+          {tab === 'reportes' && esAdmin && <Reportes />}
+          {tab === 'horarios' && esSmod && <GrillaHorarios />}
+          {tab === 'mesas' && esSmod && <GrillaMesas />}
+          {tab === 'calendario' && esSmod && <Calendario editable />}
+          {tab === 'usuarios' && esSmod && <Usuarios esAdmin={esAdmin} />}
+          {tab === 'historial' && esAdmin && <Historial />}
+          {tab === 'importar' && esAdmin && <Importar />}
         </div>
       </div>
     </div>

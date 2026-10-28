@@ -23,6 +23,7 @@ from app.core.database import get_db  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
 from app.core.tokens import TokenFactory  # noqa: E402
 from app.main import app  # noqa: E402
+from app.models.auditoria import RegistroCambios  # noqa: E402
 from app.models.calendario import EventoCalendario  # noqa: E402
 from app.models.mesa import MesaFecha, MesaMateria  # noqa: E402
 from app.models.usuario import RolEnum, Usuario  # noqa: E402
@@ -42,10 +43,10 @@ def db():
         dbapi_conn.create_function("to_tsvector", 2, lambda _cfg, texto: texto, deterministic=True)
         dbapi_conn.create_function("sin_tildes", 1, lambda texto: texto, deterministic=True)
 
-    Usuario.__table__.create(engine)
-    # Tablas sin dependencias que el chat consulta siempre (calendario y mesas, respondidos con SQL)
-    for tabla in (EventoCalendario, MesaFecha, MesaMateria):
-        tabla.__table__.create(engine)
+    Usuario.__table__.create(engine, checkfirst=True)
+    # Tablas que el chat consulta siempre (calendario y mesas, con SQL) y el historial de cambios
+    for tabla in (EventoCalendario, MesaFecha, MesaMateria, RegistroCambios):
+        tabla.__table__.create(engine, checkfirst=True)
     Session = sessionmaker(bind=engine)
     session = Session()
     app.dependency_overrides[get_db] = lambda: session

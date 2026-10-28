@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, HttpUrl
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.dependencies import require_admin, require_mod
+from app.core.dependencies import require_admin
 from app.ingest.pipeline import DUPLICADO, guardar_publicacion
 from app.ingest.sources import TIPOS_CARGA_MANUAL, ItemCrudo
 from app.ingest.verify import procesar_pendientes
@@ -52,7 +52,7 @@ class PublicacionManualResultado(BaseModel):
 
 
 @router.get("/", response_model=list[FuenteRead])
-def listar_fuentes(db: Session = Depends(get_db), _mod=Depends(require_mod)):
+def listar_fuentes(db: Session = Depends(get_db), _admin=Depends(require_admin)):
     return [_leer(f) for f in db.query(Fuente).order_by(Fuente.id).all()]
 
 
@@ -92,7 +92,7 @@ def cargar_publicacion(
     fuente_id: int,
     datos: PublicacionManual,
     db: Session = Depends(get_db),
-    _mod=Depends(require_mod),
+    _admin=Depends(require_admin),
 ):
     fuente = db.get(Fuente, fuente_id)
     if not fuente:

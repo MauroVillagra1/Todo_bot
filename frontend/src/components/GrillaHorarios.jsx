@@ -1,5 +1,5 @@
 /**
- * GrillaHorarios — solo ADMIN. Tabla tipo planilla de los horarios que usa el chat:
+ * GrillaHorarios — SMOD y ADMIN. Tabla tipo planilla de los horarios que usa el chat:
  * año → comisión → bloques (día, hora, materia, docente, aula, lugar).
  * Cada celda se guarda al salir de ella; las filas nuevas quedan como "Carga manual".
  */

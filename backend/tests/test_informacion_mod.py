@@ -17,12 +17,12 @@ def tablas(db):
     engine = db.get_bind()
     for m in (Fuente, Documento, Publicacion, Chunk, Ingesta, MetricaDiaria,
               Informacion, Evidencia, Verificacion, Historial):
-        m.__table__.create(engine)
+        m.__table__.create(engine, checkfirst=True)
 
 
 @pytest.fixture
 def mod(crear_usuario):
-    return crear_usuario("mod@alu.frt.utn.edu.ar", RolEnum.MOD)
+    return crear_usuario("mod@alu.frt.utn.edu.ar", RolEnum.SMOD)
 
 
 def test_miembro_no_puede_cargar(client, crear_usuario):

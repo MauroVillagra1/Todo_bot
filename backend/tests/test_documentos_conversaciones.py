@@ -22,7 +22,7 @@ def tablas(db, monkeypatch):
     engine = db.get_bind()
     for m in (Fuente, Documento, Publicacion, Chunk, Ingesta, MetricaDiaria, Informacion, Evidencia,
               Verificacion, Historial, CacheRespuesta, DocumentoImportante, MensajeChat, Voto):
-        m.__table__.create(engine)
+        m.__table__.create(engine, checkfirst=True)
     monkeypatch.setattr(documentos, "describir", lambda nombre, texto: f"Sirve para {nombre.lower()}.")
 
 
@@ -114,7 +114,7 @@ def test_conversaciones_propias_con_fuentes(client, db, crear_usuario):
 
 
 def test_avisos_de_paro_y_baja(client, crear_usuario):
-    mod = crear_usuario("mod@alu.frt.utn.edu.ar", RolEnum.MOD)
+    mod = crear_usuario("mod@alu.frt.utn.edu.ar", RolEnum.SMOD)
     miembro = crear_usuario("a@alu.frt.utn.edu.ar")
     manana = date.today() + timedelta(days=1)
     paro = client.post("/api/v1/informacion/paro", json={"tipo": "NO_DOCENTE", "fecha": manana.isoformat()},
@@ -136,3 +136,23 @@ def test_informacion_sin_vencimiento(client, crear_usuario):
     permanente = client.post("/api/v1/informacion", json={"tipo": "TRAMITE", "contenido": texto + " ",
                                                           "sin_vencimiento": True}, headers=auth(mod)).json()
     assert permanente["estado"] == "CONFIRMADA" and permanente["fecha_fin"] is None
+
+
+def test_smod_borra_documento_y_el_admin_lo_recupera(client, db, crear_usuario):
+    admin = crear_usuario("admin@alu.frt.utn.edu.ar", RolEnum.ADMIN)
+    smod = crear_usuario("smod@alu.frt.utn.edu.ar", RolEnum.SMOD)
+    archivo = ("RECURSADO.docx", _docx("REF: RECURSADO DE MATERIAS"), "x")
+    doc = client.post("/api/v1/documentos", files={"archivo": archivo}, data={"nombre": "Recursado"},
+                      headers=auth(smod)).json()
+    assert client.delete(f"/api/v1/documentos/{doc['id']}", headers=auth(smod)).status_code == 204
+    assert client.get("/api/v1/documentos", headers=auth(smod)).json() == []
+    assert client.get(f"/api/v1/documentos/{doc['id']}/archivo").status_code == 404
+
+    cambio = client.get("/api/v1/historial", params={"tabla": "documentos_importantes"},
+                        headers=auth(admin)).json()["items"][0]
+    assert cambio["accion"] == "eliminacion"
+    assert client.post(f"/api/v1/historial/{cambio['id']}/deshacer", headers=auth(admin)).status_code == 200
+    assert [d["nombre"] for d in client.get("/api/v1/documentos", headers=auth(smod)).json()] == ["Recursado"]
+    assert client.get(f"/api/v1/documentos/{doc['id']}/archivo").status_code == 200
+    vigentes = db.query(Informacion).filter(Informacion.estado != "REEMPLAZADA").all()
+    assert [i.titulo for i in vigentes] == ["Documento: Recursado"]

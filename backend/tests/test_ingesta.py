@@ -49,7 +49,7 @@ class FuenteFalsa(Source):
 def fuente(db):
     engine = db.get_bind()
     for modelo in (Fuente, Documento, Publicacion, Chunk, Ingesta, MetricaDiaria):
-        modelo.__table__.create(engine)
+        modelo.__table__.create(engine, checkfirst=True)
     f = Fuente(nombre="Sistemas FRT", tipo=TipoFuenteEnum.WORDPRESS, url="https://x",
                confiabilidad_base=100, activa=True, config={})
     db.add(f)

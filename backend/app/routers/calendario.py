@@ -1,9 +1,9 @@
 """
 Router del calendario académico.
   GET    /api/v1/calendario          → todas las actividades (cualquier usuario: también se muestran en el chat)
-  POST   /api/v1/calendario          → agregar (ADMIN)
-  PATCH  /api/v1/calendario/{id}     → corregir (ADMIN)
-  DELETE /api/v1/calendario/{id}     → borrar (ADMIN)
+  POST   /api/v1/calendario          → agregar (SMOD y ADMIN)
+  PATCH  /api/v1/calendario/{id}     → corregir (SMOD y ADMIN)
+  DELETE /api/v1/calendario/{id}     → borrar (SMOD y ADMIN)
 Todo cambio queda en registro_cambios y vacía la caché del chat.
 """
 from datetime import date
@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user, require_admin
+from app.core.dependencies import get_current_user, require_smod
 from app.models.auditoria import RegistroCambios
 from app.models.cache import CacheRespuesta
 from app.models.calendario import CATEGORIAS, EventoCalendario
@@ -77,7 +77,7 @@ def listar(db: Session = Depends(get_db), _usuario=Depends(get_current_user)):
 
 
 @router.post("/", response_model=EventoRead, status_code=status.HTTP_201_CREATED)
-def crear(datos: EventoCreate, db: Session = Depends(get_db), admin=Depends(require_admin)):
+def crear(datos: EventoCreate, db: Session = Depends(get_db), admin=Depends(require_smod)):
     e = EventoCalendario(**datos.model_dump())
     e.actividad = e.actividad.strip()
     _validar(e)
@@ -89,7 +89,7 @@ def crear(datos: EventoCreate, db: Session = Depends(get_db), admin=Depends(requ
 
 
 @router.patch("/{evento_id}", response_model=EventoRead)
-def actualizar(evento_id: int, datos: EventoBase, db: Session = Depends(get_db), admin=Depends(require_admin)):
+def actualizar(evento_id: int, datos: EventoBase, db: Session = Depends(get_db), admin=Depends(require_smod)):
     e = db.get(EventoCalendario, evento_id)
     if not e:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Actividad no encontrada")
@@ -109,7 +109,7 @@ def actualizar(evento_id: int, datos: EventoBase, db: Session = Depends(get_db),
 
 
 @router.delete("/{evento_id}", status_code=status.HTTP_204_NO_CONTENT)
-def borrar(evento_id: int, db: Session = Depends(get_db), admin=Depends(require_admin)):
+def borrar(evento_id: int, db: Session = Depends(get_db), admin=Depends(require_smod)):
     e = db.get(EventoCalendario, evento_id)
     if not e:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Actividad no encontrada")

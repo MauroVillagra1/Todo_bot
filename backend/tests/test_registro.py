@@ -47,9 +47,13 @@ def test_registro_completo_crea_miembro_y_devuelve_token(client, db, mails):
     assert client.post("/api/v1/auth/registro/verificar", json={"email": ALU, "codigo": codigo}).status_code == 400
 
 
-def test_docentes_tambien_pueden_registrarse(client, mails):
-    r = client.post("/api/v1/auth/registro", json={**DATOS, "email": "jgomez@doc.frt.utn.edu.ar"})
+def test_docentes_se_registran_como_mod(client, mails):
+    docente = "juan.gomez@doc.frt.utn.edu.ar"
+    r = client.post("/api/v1/auth/registro", json={**DATOS, "email": docente})
     assert r.status_code == 200, r.text
+    r = client.post("/api/v1/auth/registro/verificar", json={"email": docente, "codigo": mails[-1][1]})
+    assert r.status_code == 201, r.text
+    assert r.json()["usuario"]["rol"] == "MOD"
 
 
 @pytest.mark.parametrize("email", ["ana@gmail.com", "ana@frt.utn.edu.ar", "ana@alu.frt.utn.edu.ar.evil.com",

@@ -70,8 +70,8 @@ class UsuarioRead(UsuarioBase):
 
 
 class CambioRol(BaseModel):
-    """Desde la app un ADMIN solo da o quita el rango de moderador."""
-    rol: Literal[RolEnum.MIEMBRO, RolEnum.MOD]
+    """Desde la app nadie da el rango ADMIN (solo por consola: create_admin.py)."""
+    rol: Literal[RolEnum.MIEMBRO, RolEnum.MOD, RolEnum.SMOD]
 
 
 class Suspension(BaseModel):

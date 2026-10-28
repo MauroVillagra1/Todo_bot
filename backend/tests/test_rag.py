@@ -29,7 +29,7 @@ def _r(n, estado="CONFIRMADA", dia=20):
 def rag(db, monkeypatch):
     engine = db.get_bind()
     for m in (MensajeChat, CacheRespuesta, MetricaDiaria, Informacion, Chunk):
-        m.__table__.create(engine)
+        m.__table__.create(engine, checkfirst=True)
     llamadas = {"llm": [], "busquedas": []}
     estado = {"resultados": [_r(1), _r(2, "PROBABLE", dia=25)], "texto": "Hasta el 28/11 [1]."}
 

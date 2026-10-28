@@ -1,7 +1,7 @@
 /**
  * Documentos importantes: notas y formularios para descargar (todos los usuarios).
- * ADMIN además sube (PDF, Word o imagen de hasta 2 MB), corrige la fecha, lo marca como desactualizado
- * (se sigue descargando, con aviso) y borra. El backend lee el contenido y,
+ * SMOD y ADMIN además suben (PDF, Word o imagen de hasta 2 MB), corrigen la fecha, lo marcan como desactualizado
+ * (se sigue descargando, con aviso) y lo borran. El backend lee el contenido y,
  * si no se escribe una descripción, genera una: así el chat sabe para qué sirve cada documento.
  */
 import { useEffect, useRef, useState } from 'react'

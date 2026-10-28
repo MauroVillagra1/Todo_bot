@@ -1,7 +1,7 @@
 """
 Modelo Usuario — representa a cualquier persona del sistema.
 Las cuentas se crean por registro público con código enviado al mail
-institucional (siempre como MIEMBRO) o por consola (create_admin.py). Roles: ver RolEnum y docs/ANALISIS_MVP.md §11.
+institucional (MIEMBRO; los docentes, MOD: ver rol_inicial) o por consola (create_admin.py). Roles: ver RolEnum.
 Suspensión: activo=False es permanente; baneado_hasta en el futuro es temporal.
 """
 import enum
@@ -15,8 +15,17 @@ from app.core.database import Base
 
 class RolEnum(str, enum.Enum):
     MIEMBRO = "MIEMBRO"  # consulta el chat y la información disponible
-    MOD     = "MOD"      # + revisa información, contradicciones y fuentes
-    ADMIN   = "ADMIN"    # + administra fuentes, configuración y usuarios
+    MOD     = "MOD"      # + carga información en el chat (formulario "Cargar información")
+    SMOD    = "SMOD"     # + paros, documentos, horarios, mesas, calendario, sugerencias; da o quita MOD
+    ADMIN   = "ADMIN"    # + resumen, reportes, rangos y suspensiones, historial de cambios, importar archivos
+
+
+DOMINIO_DOCENTES = "doc.frt.utn.edu.ar"
+
+
+def rol_inicial(email: str) -> RolEnum:
+    """Rol al registrarse: los docentes (nombre.apellido@doc.frt.utn.edu.ar) entran como MOD."""
+    return RolEnum.MOD if email.lower().endswith("@" + DOMINIO_DOCENTES) else RolEnum.MIEMBRO
 
 
 class Usuario(Base):

@@ -46,7 +46,7 @@ def tablas(db):
     engine = db.get_bind()
     for m in (Fuente, Documento, Publicacion, Chunk, Ingesta, MetricaDiaria,
               Informacion, Evidencia, Verificacion, Historial, HorarioClase):
-        m.__table__.create(engine)
+        m.__table__.create(engine, checkfirst=True)
     return db
 
 
@@ -159,7 +159,7 @@ POSTEO = {"url": "https://whatsapp.com/channel/0029VaYQ0rj2phHJITlkfZ1T/123",
 def test_mod_carga_posteo_de_whatsapp_y_queda_no_confirmado(client, crear_usuario, tablas):
     db = tablas
     wa = _fuente(db, TipoFuenteEnum.WHATSAPP, "Canal WhatsApp 1", confiabilidad=50)
-    mod = crear_usuario("mod@alu.frt.utn.edu.ar", RolEnum.MOD)
+    mod = crear_usuario("mod@alu.frt.utn.edu.ar", RolEnum.ADMIN)
 
     r = client.post(f"/api/v1/fuentes/{wa.id}/publicaciones", json=POSTEO, headers=auth(mod))
     assert r.status_code == 201, r.text
@@ -182,7 +182,7 @@ def test_miembro_no_puede_cargar_ni_listar_fuentes(client, crear_usuario, tablas
 
 def test_no_se_carga_a_mano_en_fuentes_automaticas(client, crear_usuario, tablas):
     wp = _fuente(tablas, TipoFuenteEnum.WORDPRESS, "Sistemas FRT")
-    mod = crear_usuario("mod@alu.frt.utn.edu.ar", RolEnum.MOD)
+    mod = crear_usuario("mod@alu.frt.utn.edu.ar", RolEnum.ADMIN)
     assert client.post(f"/api/v1/fuentes/{wp.id}/publicaciones", json=POSTEO, headers=auth(mod)).status_code == 400
     lista = client.get("/api/v1/fuentes/", headers=auth(mod)).json()
     assert [(f["nombre"], f["carga_manual"]) for f in lista] == [("Sistemas FRT", False)]

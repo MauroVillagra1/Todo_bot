@@ -27,7 +27,7 @@ def datos(db):
     engine = db.get_bind()
     for m in (Fuente, Documento, Publicacion, Chunk, Ingesta, MetricaDiaria, Informacion, Evidencia,
               Verificacion, Historial, RegistroCambios, CacheRespuesta, MensajeChat, HorarioClase):
-        m.__table__.create(engine)
+        m.__table__.create(engine, checkfirst=True)
     db.add_all([MesaFecha(**f) for f in FECHAS_2026])
     db.add_all([MesaMateria(**m) for m in materias_iniciales()])
     db.add_all([EventoCalendario(**e) for e in eventos_iniciales()])
@@ -93,7 +93,7 @@ def test_hay_clases_un_dia_normal_un_feriado_y_un_receso(db, datos):
 
 
 def test_hay_clases_con_paro_no_docente(db, datos, client, crear_usuario):
-    mod = crear_usuario("mod@alu.frt.utn.edu.ar", RolEnum.MOD)
+    mod = crear_usuario("mod@alu.frt.utn.edu.ar", RolEnum.SMOD)
     viernes = HOY + timedelta(days=2)
     r = client.post("/api/v1/informacion/paro", json={"tipo": "NO_DOCENTE", "fecha": viernes.isoformat()},
                     headers=auth(mod))

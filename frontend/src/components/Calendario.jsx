@@ -1,7 +1,7 @@
 /**
  * Calendario académico, mes por mes (con los turnos de exámenes finales intercalados).
  *   editable=false → vista para todos los usuarios (menú "Calendario")
- *   editable=true  → planilla del panel (solo ADMIN): cada celda se guarda al salir de ella
+ *   editable=true  → planilla del panel (SMOD y ADMIN): cada celda se guarda al salir de ella
  * Los turnos de examen se editan en el panel, pestaña "Mesas".
  */
 import { useEffect, useMemo, useState } from 'react'

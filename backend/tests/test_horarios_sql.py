@@ -32,7 +32,7 @@ def grillas():
 def base(db, grillas):
     engine = db.get_bind()
     for m in (Fuente, Documento, Informacion, Evidencia, HorarioClase):
-        m.__table__.create(engine)
+        m.__table__.create(engine, checkfirst=True)
     f = Fuente(nombre="Sistemas FRT (PDFs)", tipo=TipoFuenteEnum.WORDPRESS, url="https://x",
                confiabilidad_base=100, activa=True, config={})
     db.add(f)

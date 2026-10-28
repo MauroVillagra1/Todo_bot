@@ -22,3 +22,15 @@ def paros(db: Session, desde: date, hasta: date | None = None) -> list[Informaci
     if hasta:
         consulta = consulta.filter(Informacion.fecha_inicio <= hasta)
     return consulta.order_by(Informacion.fecha_inicio, Informacion.id).distinct().all()
+
+
+def todos_los_paros(db: Session, limite: int = 200) -> list[Informacion]:
+    """Paros cargados que no se dieron de baja (pasados y próximos), del más nuevo al más viejo."""
+    return (
+        db.query(Informacion)
+        .join(Evidencia, Evidencia.informacion_id == Informacion.id)
+        .join(Publicacion, Publicacion.id == Evidencia.publicacion_id)
+        .filter(Publicacion.id_externo.like(f"{PREFIJO_PARO}%"), Publicacion.vigente.is_(True),
+                Informacion.estado != E.REEMPLAZADA)
+        .order_by(Informacion.fecha_inicio.desc(), Informacion.id.desc()).distinct().limit(limite).all()
+    )

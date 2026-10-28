@@ -1,5 +1,5 @@
 """
-Router de reportes de usuarios (MOD y ADMIN): respuestas votadas como "dato incorrecto".
+Router de reportes de usuarios (solo ADMIN): respuestas votadas como "dato incorrecto".
   GET  /api/v1/reportes                 → pendientes, con la pregunta, la respuesta y las fuentes
   POST /api/v1/reportes/{id}/resolver   → "ocultar": las informaciones elegidas dejan de usarse
                                           en el chat (DESACTUALIZADA, con su verificación);
@@ -15,7 +15,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.dependencies import require_mod
+from app.core.dependencies import require_admin
 from app.models.cache import CacheRespuesta
 from app.models.chat import MensajeChat
 from app.models.informacion import EstadoInformacionEnum as E, Evidencia, Informacion, Verificacion
@@ -64,7 +64,7 @@ def _url(db: Session, informacion_id: int) -> str | None:
 
 
 @router.get("/", response_model=list[ReporteRead])
-def listar_reportes(db: Session = Depends(get_db), _mod=Depends(require_mod)):
+def listar_reportes(db: Session = Depends(get_db), _mod=Depends(require_admin)):
     votos = (
         db.query(Voto, MensajeChat, Usuario)
         .join(MensajeChat, MensajeChat.id == Voto.mensaje_id)
@@ -100,7 +100,7 @@ def listar_reportes(db: Session = Depends(get_db), _mod=Depends(require_mod)):
 
 
 @router.post("/{voto_id}/resolver", status_code=status.HTTP_204_NO_CONTENT)
-def resolver_reporte(voto_id: int, datos: Resolucion, db: Session = Depends(get_db), mod=Depends(require_mod)):
+def resolver_reporte(voto_id: int, datos: Resolucion, db: Session = Depends(get_db), mod=Depends(require_admin)):
     voto = db.get(Voto, voto_id)
     if not voto or voto.motivo != MotivoVotoEnum.INCORRECTO:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reporte no encontrado")
@@ -128,7 +128,7 @@ def resolver_reporte(voto_id: int, datos: Resolucion, db: Session = Depends(get_
 
 
 @router.get("/resumen")
-def resumen_votos(db: Session = Depends(get_db), _mod=Depends(require_mod)):
+def resumen_votos(db: Session = Depends(get_db), _mod=Depends(require_admin)):
     filas = dict(db.query(Voto.valor, func.count()).group_by(Voto.valor).all())
     pendientes = (db.query(Voto)
                   .filter(Voto.motivo == MotivoVotoEnum.INCORRECTO, Voto.revisado.is_(False)).count())

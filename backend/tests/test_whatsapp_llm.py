@@ -25,7 +25,7 @@ def wa(db, monkeypatch):
     engine = db.get_bind()
     for m in (Fuente, Documento, Publicacion, Chunk, MetricaDiaria,
               Informacion, Evidencia, Verificacion, Historial):
-        m.__table__.create(engine)
+        m.__table__.create(engine, checkfirst=True)
     f = Fuente(nombre="Canal WhatsApp 1", tipo=TipoFuenteEnum.WHATSAPP,
                url="https://whatsapp.com/channel/x", confiabilidad_base=50, activa=True, config={})
     db.add(f)

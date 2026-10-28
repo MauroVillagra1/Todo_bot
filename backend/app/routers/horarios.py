@@ -1,5 +1,5 @@
 """
-Router de la grilla de horarios (solo ADMIN): la tabla del panel ordenada por
+Router de la grilla de horarios (SMOD y ADMIN): la tabla del panel ordenada por
 año → comisión → bloques (materia, docente, aula).
   GET    /api/v1/horarios        → los mismos bloques que usa el chat
   POST   /api/v1/horarios        → agrega un bloque a mano (sin PDF de origen)
@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.dependencies import require_admin
+from app.core.dependencies import require_smod
 from app.ingest.horarios import normalizar_comision, normalizar_materia
 from app.models.auditoria import RegistroCambios
 from app.models.cache import CacheRespuesta
@@ -121,7 +121,7 @@ def _auditar(db: Session, h: HorarioClase, accion: str, antes: dict | None, desp
 
 
 @router.get("/", response_model=list[BloqueRead])
-def listar_horarios(db: Session = Depends(get_db), _admin=Depends(require_admin)):
+def listar_horarios(db: Session = Depends(get_db), _admin=Depends(require_smod)):
     filas = mas_recientes(vigentes(db).all())
     filas.sort(key=lambda f: (f[0].anio or 9, f[0].comision or "", f[0].plan or "", f[0].periodo or "",
                               f[0].dia, f[0].inicio))
@@ -129,7 +129,7 @@ def listar_horarios(db: Session = Depends(get_db), _admin=Depends(require_admin)
 
 
 @router.post("/", response_model=BloqueRead, status_code=status.HTTP_201_CREATED)
-def crear_bloque(datos: BloqueCreate, db: Session = Depends(get_db), admin=Depends(require_admin)):
+def crear_bloque(datos: BloqueCreate, db: Session = Depends(get_db), admin=Depends(require_smod)):
     valores = datos.model_dump()
     valores["anio"] = valores["anio"] or int(valores["comision"][0])
     valores["materia"] = valores["materia"].strip()
@@ -144,7 +144,7 @@ def crear_bloque(datos: BloqueCreate, db: Session = Depends(get_db), admin=Depen
 
 @router.patch("/{bloque_id}", response_model=BloqueRead)
 def actualizar_bloque(bloque_id: int, datos: BloqueUpdate, db: Session = Depends(get_db),
-                      admin=Depends(require_admin)):
+                      admin=Depends(require_smod)):
     h = db.get(HorarioClase, bloque_id)
     if not h:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bloque no encontrado")
@@ -168,7 +168,7 @@ def actualizar_bloque(bloque_id: int, datos: BloqueUpdate, db: Session = Depends
 
 
 @router.delete("/{bloque_id}", status_code=status.HTTP_204_NO_CONTENT)
-def borrar_bloque(bloque_id: int, db: Session = Depends(get_db), admin=Depends(require_admin)):
+def borrar_bloque(bloque_id: int, db: Session = Depends(get_db), admin=Depends(require_smod)):
     h = db.get(HorarioClase, bloque_id)
     if not h:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bloque no encontrado")

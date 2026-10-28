@@ -2,9 +2,10 @@
 Router de documentos importantes (notas y formularios para descargar).
   GET    /api/v1/documentos                → lista (cualquier usuario), sin el archivo
   GET    /api/v1/documentos/{id}/archivo   → descarga (público: el chat lo cita con este link)
-  POST   /api/v1/documentos                → subir (ADMIN): archivo ≤ 2 MB, nombre, descripción y fecha opcionales
-  PATCH  /api/v1/documentos/{id}           → corregir nombre, descripción o fecha, o marcarlo desactualizado (ADMIN)
-  DELETE /api/v1/documentos/{id}           → borrar (ADMIN)
+  POST   /api/v1/documentos                → subir (SMOD y ADMIN): archivo ≤ 2 MB, nombre, descripción y fecha opcionales
+  PATCH  /api/v1/documentos/{id}           → corregir nombre, descripción o fecha, o marcarlo desactualizado (SMOD y ADMIN)
+  DELETE /api/v1/documentos/{id}           → borrar (SMOD y ADMIN): se oculta; se recupera desde el historial
+Todo cambio queda en el historial de cambios (se puede deshacer).
 
 Al subirlo se lee su texto (PDF o Word) y, si no se escribió una descripción, se genera una
 (IA, o el comienzo del texto si la IA no está disponible). Nombre + descripción + texto entran
@@ -24,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.dependencies import get_current_user, require_admin
+from app.core.dependencies import get_current_user, require_smod
 from app.ingest.pipeline import guardar_publicacion
 from app.ingest.sources import ItemCrudo
 from app.ingest.verify import procesar_pendientes
@@ -34,6 +35,7 @@ from app.models.informacion import (
     EstadoInformacionEnum as E, Evidencia, Informacion, TipoInformacionEnum, Verificacion,
 )
 from app.models.ingesta import Fuente, Publicacion, TipoFuenteEnum
+from app.services.auditoria import foto, registrar
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/documentos", tags=["Documentos importantes"])
@@ -48,6 +50,7 @@ TIPOS = {
 }
 MAX_TEXTO_INDEXADO = 6000
 PREFIJO = "documento:"
+CAMPOS_AUDITADOS = ("nombre", "descripcion", "fecha_documento", "desactualizado", "borrado")
 
 
 class DocumentoRead(BaseModel):
@@ -148,18 +151,49 @@ def indexar(db: Session, doc: DocumentoImportante, url: str) -> None:
     db.commit()
     procesar_pendientes(db)
     estado = E.DESACTUALIZADA if doc.desactualizado else E.CONFIRMADA
+    # La última versión vuelve a valer aunque se hubiera borrado el documento (deshacer un borrado)
+    ultima = (db.query(Publicacion).filter(Publicacion.id_externo == f"{PREFIJO}{doc.id}")
+              .order_by(Publicacion.id.desc()).first())
+    ultima.vigente = True
+    de_la_ultima = {i for (i,) in db.query(Evidencia.informacion_id).filter(Evidencia.publicacion_id == ultima.id)}
     for info in _informaciones(db, doc.id):
-        if info.estado == E.REEMPLAZADA:
+        if info.estado == E.REEMPLAZADA and info.id not in de_la_ultima:
             continue
         info.tipo = TipoInformacionEnum.TRAMITE
         info.fecha_fin = None  # un formulario no vence por las fechas que tenga adentro
         if info.estado != estado:
             db.add(Verificacion(informacion_id=info.id, resultado=estado, puntuacion=info.confianza,
-                                explicacion="Marcado como desactualizado por un administrador" if doc.desactualizado
-                                else "Documento vigente según un administrador"))
+                                explicacion="Marcado como desactualizado desde el panel" if doc.desactualizado
+                                else "Documento vigente según el panel"))
         info.estado = estado
     db.query(CacheRespuesta).delete()
     db.commit()
+
+
+def url_guardada(db: Session, documento_id: int) -> str:
+    """Link de descarga con el que se indexó (para reindexar sin el request a mano)."""
+    url = (db.query(Publicacion.url).filter(Publicacion.id_externo == f"{PREFIJO}{documento_id}")
+           .order_by(Publicacion.id.desc()).limit(1).scalar())
+    return url or get_settings().SITE_URL
+
+
+def ocultar(db: Session, doc: DocumentoImportante, explicacion: str) -> None:
+    """Borrado recuperable: no se lista ni se descarga y el chat deja de citarlo (falta el commit)."""
+    doc.borrado = True
+    for info in _informaciones(db, doc.id):
+        if info.estado != E.REEMPLAZADA:
+            info.estado = E.REEMPLAZADA
+            db.add(Verificacion(informacion_id=info.id, resultado=E.REEMPLAZADA, puntuacion=info.confianza,
+                                explicacion=explicacion))
+    db.query(Publicacion).filter(Publicacion.id_externo == f"{PREFIJO}{doc.id}").update({"vigente": False})
+    db.query(CacheRespuesta).delete()
+
+
+def _vigente(db: Session, documento_id: int) -> DocumentoImportante:
+    doc = db.get(DocumentoImportante, documento_id)
+    if not doc or doc.borrado:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Documento no encontrado")
+    return doc
 
 
 def _informaciones(db: Session, documento_id: int) -> list[Informacion]:
@@ -174,14 +208,13 @@ def _informaciones(db: Session, documento_id: int) -> list[Informacion]:
 
 @router.get("", response_model=list[DocumentoRead])
 def listar(db: Session = Depends(get_db), _usuario=Depends(get_current_user)):
-    return db.query(DocumentoImportante).order_by(DocumentoImportante.nombre).all()
+    return (db.query(DocumentoImportante).filter(DocumentoImportante.borrado.is_(False))
+            .order_by(DocumentoImportante.nombre).all())
 
 
 @router.get("/{documento_id}/archivo", name="descargar_documento")
 def descargar(documento_id: int, db: Session = Depends(get_db)):
-    doc = db.get(DocumentoImportante, documento_id)
-    if not doc:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Documento no encontrado")
+    doc = _vigente(db, documento_id)
     return Response(
         content=doc.contenido, media_type=doc.content_type,
         headers={
@@ -200,7 +233,7 @@ async def subir(
     descripcion: str | None = Form(None, max_length=1000),
     fecha_documento: date | None = Form(None),
     db: Session = Depends(get_db),
-    admin=Depends(require_admin),
+    admin=Depends(require_smod),
 ):
     archivo_nombre = (archivo.filename or "documento").rsplit("/", 1)[-1].rsplit("\\", 1)[-1][:255]
     extension = ("." + archivo_nombre.rsplit(".", 1)[-1].lower()) if "." in archivo_nombre else ""
@@ -219,6 +252,8 @@ async def subir(
         contenido=contenido, texto_extraido=texto or None, subido_por=admin.id, fecha_documento=fecha_documento,
     )
     db.add(doc)
+    db.flush()
+    registrar(db, "documentos_importantes", doc.id, "creacion", None, foto(doc, CAMPOS_AUDITADOS), admin)
     db.commit()
     db.refresh(doc)
     indexar(db, doc, url_descarga(request, doc.id))
@@ -227,14 +262,14 @@ async def subir(
 
 @router.patch("/{documento_id}", response_model=DocumentoRead)
 def actualizar(documento_id: int, datos: DocumentoUpdate, request: Request, db: Session = Depends(get_db),
-               _admin=Depends(require_admin)):
-    doc = db.get(DocumentoImportante, documento_id)
-    if not doc:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Documento no encontrado")
+               usuario=Depends(require_smod)):
+    doc = _vigente(db, documento_id)
+    antes = foto(doc, CAMPOS_AUDITADOS)
     for campo, valor in datos.model_dump(exclude_unset=True).items():
         if valor is None and campo in ("nombre", "descripcion", "desactualizado"):
             raise HTTPException(422, f"«{campo}» no puede quedar vacío")
         setattr(doc, campo, valor.strip() if isinstance(valor, str) else valor)
+    registrar(db, "documentos_importantes", doc.id, "actualizacion", antes, foto(doc, CAMPOS_AUDITADOS), usuario)
     db.commit()
     indexar(db, doc, url_descarga(request, doc.id))  # versión nueva para el chat (y el estado que corresponde)
     db.refresh(doc)
@@ -242,17 +277,10 @@ def actualizar(documento_id: int, datos: DocumentoUpdate, request: Request, db: 
 
 
 @router.delete("/{documento_id}", status_code=status.HTTP_204_NO_CONTENT)
-def borrar(documento_id: int, db: Session = Depends(get_db), _admin=Depends(require_admin)):
-    doc = db.get(DocumentoImportante, documento_id)
-    if not doc:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Documento no encontrado")
-    # El chat deja de citarlo (la información queda en el historial, como todo)
-    for info in _informaciones(db, documento_id):
-        info.estado = E.REEMPLAZADA
-        db.add(Verificacion(informacion_id=info.id, resultado=E.REEMPLAZADA, puntuacion=info.confianza,
-                            explicacion="Documento borrado por un administrador"))
-    db.query(Publicacion).filter(Publicacion.id_externo == f"{PREFIJO}{documento_id}").update({"vigente": False})
-    db.delete(doc)
-    db.query(CacheRespuesta).delete()
+def borrar(documento_id: int, db: Session = Depends(get_db), usuario=Depends(require_smod)):
+    doc = _vigente(db, documento_id)
+    antes = foto(doc, CAMPOS_AUDITADOS)
+    ocultar(db, doc, "Documento borrado desde el panel")
+    registrar(db, "documentos_importantes", doc.id, "eliminacion", antes, foto(doc, CAMPOS_AUDITADOS), usuario)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

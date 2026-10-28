@@ -17,7 +17,7 @@ def tablas(db):
     engine = db.get_bind()
     for m in (Fuente, Documento, Publicacion, Informacion, Evidencia, Verificacion, MensajeChat, Voto,
               CacheRespuesta, MetricaDiaria):
-        m.__table__.create(engine)
+        m.__table__.create(engine, checkfirst=True)
     for n in (1, 2, 3):
         db.add(Informacion(id=n, tipo="BECA", titulo=f"Beca {n}", contenido="x", estado="CONFIRMADA", confianza=100))
     db.commit()
@@ -91,7 +91,7 @@ def test_no_se_vota_la_respuesta_de_otro(client, tablas, crear_usuario, respuest
 
 def test_mod_revisa_un_reporte_y_oculta_el_dato(client, tablas, crear_usuario, respuestas):
     alumno = crear_usuario("a@alu.frt.utn.edu.ar")
-    mod = crear_usuario("m@doc.frt.utn.edu.ar", RolEnum.MOD)
+    mod = crear_usuario("m@doc.frt.utn.edu.ar", RolEnum.ADMIN)
     mid = _preguntar(client, alumno)["mensaje_id"]
     client.post(f"/api/v1/chat/mensajes/{mid}/voto", json={"valor": -1, "motivo": "INCORRECTO",
                                                             "comentario": "La beca 2 cerró"}, headers=auth(alumno))
@@ -114,7 +114,7 @@ def test_mod_revisa_un_reporte_y_oculta_el_dato(client, tablas, crear_usuario, r
 
 def test_no_me_sirvio_no_es_reporte(client, tablas, crear_usuario, respuestas):
     alumno = crear_usuario("a@alu.frt.utn.edu.ar")
-    mod = crear_usuario("m@doc.frt.utn.edu.ar", RolEnum.MOD)
+    mod = crear_usuario("m@doc.frt.utn.edu.ar", RolEnum.ADMIN)
     mid = _preguntar(client, alumno)["mensaje_id"]
     client.post(f"/api/v1/chat/mensajes/{mid}/voto", json={"valor": -1}, headers=auth(alumno))
     assert client.get("/api/v1/reportes/", headers=auth(mod)).json() == []

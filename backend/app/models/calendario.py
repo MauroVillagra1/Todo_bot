@@ -1,5 +1,5 @@
 """
-Calendario académico (solo ADMIN lo edita; el chat lo responde con SQL, sin LLM).
+Calendario académico (lo editan SMOD y ADMIN; el chat lo responde con SQL, sin LLM).
 Cada fila es una actividad con fecha o rango: inicio de clases, inscripciones, plazos para
 presentar notas, recesos, pruebas de suficiencia, feriados y asuetos.
 Los turnos de exámenes finales viven en mesas_fechas (models/mesa.py).

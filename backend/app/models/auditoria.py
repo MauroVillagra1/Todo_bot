@@ -1,7 +1,7 @@
 """
 Modelo RegistroCambios — auditoría genérica de toda modificación relevante.
-Se escribe desde los servicios mediante la función helper `registrar_cambio`.
-Nunca se borra ni edita.
+Se escribe con services/auditoria.registrar. Nunca se borra: deshacer un cambio agrega otra fila
+(accion "deshacer") y marca la original con deshecho_por_id.
 """
 from datetime import datetime
 
@@ -26,6 +26,9 @@ class RegistroCambios(Base):
     valor_nuevo: Mapped[dict | None] = mapped_column(JSON)
     # Descripción breve de la acción: "creacion", "actualizacion", "inactivacion"
     accion: Mapped[str] = mapped_column(String(50), nullable=False)
+
+    # Fila "deshacer" que revirtió este cambio (None = vigente)
+    deshecho_por_id: Mapped[int | None] = mapped_column(Integer)
 
     # Quién hizo el cambio
     usuario_id: Mapped[int] = mapped_column(ForeignKey("usuarios.id"), nullable=False, index=True)

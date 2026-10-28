@@ -5,7 +5,7 @@ Router de autenticación.
   POST /api/v1/auth/logout   → cierra todas las sesiones del usuario (revoca sus tokens)
   GET  /api/v1/auth/me       → devuelve el usuario autenticado actual
   POST /api/v1/auth/registro            → datos de la cuenta; manda un código al mail
-  POST /api/v1/auth/registro/verificar  → código correcto: crea la cuenta (MIEMBRO) y loguea
+  POST /api/v1/auth/registro/verificar  → código correcto: crea la cuenta (MIEMBRO; docentes MOD) y loguea
   POST /api/v1/auth/recuperar           → manda un código si la cuenta existe
   POST /api/v1/auth/recuperar/confirmar → código correcto: cambia la contraseña
 """
@@ -24,7 +24,7 @@ from app.core.dependencies import get_current_user, motivo_suspension
 from app.core.security import HASH_DE_RELLENO, hash_password, verify_password
 from app.core.tokens import TokenFactory, TokenInvalido, tokens_de_sesion
 from app.models.codigo import CodigoVerificacion, PropositoCodigoEnum as P
-from app.models.usuario import RolEnum, Usuario
+from app.models.usuario import Usuario, rol_inicial
 from app.schemas.auth import (
     CambioPassword, CodigoIngresado, LoginRequest, Mensaje, PerfilUpdate, RecuperacionConfirmacion, RecuperacionSolicitud,
     RefreshRequest, RegistroSolicitud, TokenResponse,
@@ -250,7 +250,7 @@ def verificar_registro(datos: CodigoIngresado, db: Session = Depends(get_db)):
     if _existe(db, datos.email):  # se creó por otro lado mientras tanto
         db.commit()
         raise HTTPException(status.HTTP_409_CONFLICT, YA_REGISTRADO)
-    usuario = Usuario(nombre=codigo.datos["nombre"], email=datos.email, rol=RolEnum.MIEMBRO,
+    usuario = Usuario(nombre=codigo.datos["nombre"], email=datos.email, rol=rol_inicial(datos.email),
                       password_hash=codigo.datos["password_hash"])
     db.add(usuario)
     db.commit()

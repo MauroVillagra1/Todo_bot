@@ -28,5 +28,7 @@ class DocumentoImportante(Base):
     fecha_documento: Mapped[date | None] = mapped_column(Date)  # la del documento (no la de subida)
     # Sigue descargable pero el chat avisa que puede no estar vigente
     desactualizado: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    # Borrado desde el panel: no se lista ni se descarga, pero se puede deshacer desde el historial
+    borrado: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     subido_por: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id", ondelete="SET NULL"))
     creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

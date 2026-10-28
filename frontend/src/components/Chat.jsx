@@ -22,6 +22,7 @@ import Sugerir from './Sugerir'
 
 const ROLES_DISPLAY = {
   ADMIN:   { label: 'Admin',     color: 'bg-[#e8592e]/15 text-[#f2894f]' },
+  SMOD:    { label: 'Super mod', color: 'bg-violet-500/15 text-violet-300' },
   MOD:     { label: 'Moderador', color: 'bg-sky-500/15 text-sky-400' },
   MIEMBRO: { label: 'Miembro',   color: 'bg-gray-500/15 text-gray-400' },
 }
@@ -34,7 +35,7 @@ const PREGUNTAS_EJEMPLO = [
 ]
 
 // La UI solo oculta el acceso: los permisos reales se validan en el backend
-const TIENE_PANEL = ['MOD', 'ADMIN']
+const TIENE_PANEL = ['MOD', 'SMOD', 'ADMIN']
 
 // Logo de siempre: arriba a la izquierda (Juliette acompaña en el chat)
 const LOGO_URL = 'https://res.cloudinary.com/dol1ba0ld/image/upload/v1787954474/asd/Preguntale_a_UTNIA_xwocbf.png'
@@ -317,7 +318,7 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
         </div>
       ) : vista === 'documentos' ? (
         <div className="flex-1 overflow-hidden">
-          <Documentos esAdmin={usuario.rol === 'ADMIN'} />
+          <Documentos esAdmin={['SMOD', 'ADMIN'].includes(usuario.rol)} />
         </div>
       ) : vista === 'calendario' ? (
         <div className="flex-1 overflow-y-auto bg-[#0a0a0c] text-[#f4f4f5] font-body p-6 [color-scheme:dark]">

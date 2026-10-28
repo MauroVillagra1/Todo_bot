@@ -1,10 +1,13 @@
 """
-Router de carga directa de información (MOD y ADMIN).
-  POST /api/v1/informacion       → un dato cualquiera: tipo (obligatorio), texto (obligatorio), link (opcional)
-  POST /api/v1/informacion/paro  → paro docente, no docente o ambos, con fecha y cantidad de días.
+Router de carga directa de información.
+  POST /api/v1/informacion       → MOD, SMOD y ADMIN: un dato cualquiera: tipo, texto y link (opcional)
+  POST /api/v1/informacion/paro  → SMOD y ADMIN: paro docente, no docente o ambos, con fecha y cantidad de días.
        El texto lo arma el backend: si la facultad queda abierta o cerrada sale del tipo de paro.
+       Si ya hay un paro cargado en alguno de esos días se rechaza (409).
+  GET  /api/v1/informacion/paros → SMOD y ADMIN: paros próximos y pasados
   GET  /api/v1/informacion/avisos → paros vigentes (cualquier usuario): el banner del chat
-  DELETE /api/v1/informacion/{id} → dar de baja algo cargado por un moderador (ej. un paro levantado)
+  DELETE /api/v1/informacion/{id} → SMOD y ADMIN: dar de baja algo cargado por moderadores (ej. un paro levantado)
+Todo queda en el historial de cambios (se puede deshacer).
 
 Entra por el mismo pipeline que la carga manual (publicación → chunks → INFORMACION) y queda
 buscable en el chat de inmediato. El tipo elegido por el MOD manda sobre la clasificación automática.
@@ -20,7 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.dependencies import get_current_user, require_mod
+from app.core.dependencies import get_current_user, require_mod, require_smod
 from app.ingest.pipeline import guardar_publicacion
 from app.ingest.sources import ItemCrudo
 from app.ingest.verify import procesar_pendientes
@@ -31,7 +34,8 @@ from app.models.informacion import (
 )
 from app.models.ingesta import Fuente, Publicacion, TipoFuenteEnum
 from app.rag.fechas import hoy_argentina
-from app.services.avisos import PREFIJO_PARO, paros
+from app.services.auditoria import registrar
+from app.services.avisos import PREFIJO_PARO, paros, todos_los_paros
 
 router = APIRouter(prefix="/informacion", tags=["Información"])
 
@@ -72,6 +76,11 @@ class InformacionCargada(BaseModel):
     estado: str
     fecha_inicio: date | None = None
     fecha_fin: date | None
+
+
+class ListaParos(BaseModel):
+    proximos: list[InformacionCargada]  # de hoy en adelante, el más cercano primero
+    pasados: list[InformacionCargada]   # el más reciente primero
 
 
 def _fuente_moderadores(db: Session) -> Fuente:
@@ -162,16 +171,40 @@ def texto_de_paro(datos: Paro) -> tuple[str, str]:
 
 
 @router.post("", response_model=InformacionCargada, status_code=status.HTTP_201_CREATED)
-def cargar_informacion(datos: InformacionManual, db: Session = Depends(get_db), _mod=Depends(require_mod)):
+def cargar_informacion(datos: InformacionManual, db: Session = Depends(get_db), usuario=Depends(require_mod)):
     contenido = datos.contenido.strip()
-    return _cargar(db, datos.tipo, _titulo_de(contenido), contenido, datos.url,
-                   sin_vencimiento=datos.sin_vencimiento)
+    cargada = _cargar(db, datos.tipo, _titulo_de(contenido), contenido, datos.url,
+                      sin_vencimiento=datos.sin_vencimiento)
+    _auditar(db, "informacion", cargada, usuario)
+    return cargada
+
+
+def _auditar(db: Session, tabla: str, cargada: InformacionCargada, usuario) -> None:
+    registrar(db, tabla, cargada.informacion_id, "creacion", None,
+              {"titulo": cargada.titulo, "tipo": cargada.tipo, "estado": cargada.estado}, usuario)
+    db.commit()
 
 
 @router.post("/paro", response_model=InformacionCargada, status_code=status.HTTP_201_CREATED)
-def cargar_paro(datos: Paro, db: Session = Depends(get_db), _mod=Depends(require_mod)):
+def cargar_paro(datos: Paro, db: Session = Depends(get_db), usuario=Depends(require_smod)):
+    fin = datos.fecha + timedelta(days=datos.dias - 1)
+    if ya := paros(db, datos.fecha, fin):
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            f"Ya hay un paro cargado en esos días: «{ya[0].titulo}». "
+                            "Si cambió, dalo de baja y cargalo de nuevo.")
     titulo, contenido = texto_de_paro(datos)
-    return _cargar(db, TipoInformacionEnum.AVISO, titulo, contenido, datos.url, prefijo=PREFIJO_PARO)
+    cargada = _cargar(db, TipoInformacionEnum.AVISO, titulo, contenido, datos.url, prefijo=PREFIJO_PARO)
+    _auditar(db, "paros", cargada, usuario)
+    return cargada
+
+
+@router.get("/paros", response_model=ListaParos)
+def listar_paros(db: Session = Depends(get_db), _smod=Depends(require_smod)):
+    hoy = hoy_argentina()
+    todos = todos_los_paros(db)
+    proximos = sorted((p for p in todos if p.fecha_fin and p.fecha_fin >= hoy), key=lambda p: p.fecha_inicio or hoy)
+    return ListaParos(proximos=[_leer(p) for p in proximos],
+                      pasados=[_leer(p) for p in todos if not (p.fecha_fin and p.fecha_fin >= hoy)])
 
 
 @router.get("/avisos", response_model=list[InformacionCargada])
@@ -181,7 +214,7 @@ def avisos_vigentes(db: Session = Depends(get_db), _usuario=Depends(get_current_
 
 
 @router.delete("/{informacion_id}", status_code=status.HTTP_204_NO_CONTENT)
-def dar_de_baja(informacion_id: int, db: Session = Depends(get_db), _mod=Depends(require_mod)):
+def dar_de_baja(informacion_id: int, db: Session = Depends(get_db), usuario=Depends(require_smod)):
     """Solo lo cargado por moderadores: queda en el historial pero el chat deja de usarlo."""
     info = (
         db.query(Informacion)
@@ -192,6 +225,13 @@ def dar_de_baja(informacion_id: int, db: Session = Depends(get_db), _mod=Depends
     )
     if not info:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No se encontró información cargada por moderadores con ese id")
+    es_paro = (
+        db.query(Publicacion.id).join(Evidencia, Evidencia.publicacion_id == Publicacion.id)
+        .filter(Evidencia.informacion_id == info.id, Publicacion.id_externo.like(f"{PREFIJO_PARO}%")).first()
+    )
+    registrar(db, "paros" if es_paro else "informacion", info.id, "baja",
+              {"titulo": info.titulo, "estado": info.estado.value},
+              {"titulo": info.titulo, "estado": E.REEMPLAZADA.value}, usuario)
     info.estado = E.REEMPLAZADA  # la búsqueda excluye REEMPLAZADA
     db.add(Verificacion(informacion_id=info.id, resultado=E.REEMPLAZADA, puntuacion=info.confianza,
                         explicacion="Dada de baja por un moderador"))

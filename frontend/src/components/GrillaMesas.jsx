@@ -1,5 +1,5 @@
 /**
- * GrillaMesas — solo ADMIN. Planillas de las mesas de examen que usa el chat:
+ * GrillaMesas — SMOD y ADMIN. Planillas de las mesas de examen que usa el chat:
  *   Fechas   → por turno, el cierre de inscripción y el día del examen de la Mesa I, II y III
  *   Materias → en qué mesa se rinde cada materia y su tribunal (sede, presidente, vocales, hora)
  * Cada celda se guarda al salir de ella.

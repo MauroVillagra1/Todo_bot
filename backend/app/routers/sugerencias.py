@@ -2,10 +2,11 @@
 Router de sugerencias de datos.
   POST /api/v1/sugerencias                  → cualquier usuario propone un dato
   GET  /api/v1/sugerencias/mias             → las propias, con su estado
-  GET  /api/v1/sugerencias?estado=PENDIENTE → para revisar (MOD y ADMIN)
-  POST /api/v1/sugerencias/{id}/aceptar     → el MOD puede corregir título/texto;
+  GET  /api/v1/sugerencias?estado=PENDIENTE → para revisar (SMOD y ADMIN)
+  POST /api/v1/sugerencias/{id}/aceptar     → quien revisa puede corregir título/texto;
        entra por el mismo pipeline que la carga manual y queda buscable en el chat
   POST /api/v1/sugerencias/{id}/rechazar    → con un motivo que ve quien la envió
+Aceptar y rechazar quedan en el historial de cambios.
 """
 from datetime import datetime, timezone
 from html import escape
@@ -16,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.dependencies import get_current_user, require_mod
+from app.core.dependencies import get_current_user, require_smod
 from app.ingest.pipeline import guardar_publicacion
 from app.ingest.sources import ItemCrudo
 from app.ingest.verify import procesar_pendientes
@@ -24,11 +25,12 @@ from app.models.informacion import Evidencia, Informacion
 from app.models.ingesta import Fuente, Publicacion, TipoFuenteEnum
 from app.models.sugerencia import EstadoSugerenciaEnum as S, Sugerencia
 from app.models.usuario import Usuario
+from app.services.auditoria import registrar
 
 router = APIRouter(prefix="/sugerencias", tags=["Sugerencias"])
 
 FUENTE_SUGERENCIAS = "Sugerencias de usuarios"
-# Revisadas por un MOD pero sin documento oficial: quedan PROBABLE (el ADMIN puede cambiarlo en Fuentes)
+# Revisadas en el panel pero sin documento oficial: quedan PROBABLE
 CONFIABILIDAD_SUGERENCIAS = 80
 MAX_PENDIENTES_POR_USUARIO = 10
 
@@ -130,7 +132,7 @@ def mis_sugerencias(db: Session = Depends(get_db), usuario=Depends(get_current_u
 def listar_sugerencias(
     estado: S = Query(S.PENDIENTE),
     db: Session = Depends(get_db),
-    _mod=Depends(require_mod),
+    _smod=Depends(require_smod),
 ):
     orden = Sugerencia.id.asc() if estado == S.PENDIENTE else Sugerencia.id.desc()  # pendientes: la más vieja primero
     filas = db.query(Sugerencia).filter(Sugerencia.estado == estado).order_by(orden).limit(100)
@@ -142,7 +144,7 @@ def aceptar_sugerencia(
     sugerencia_id: int,
     datos: Aceptacion,
     db: Session = Depends(get_db),
-    mod=Depends(require_mod),
+    mod=Depends(require_smod),
 ):
     s = _pendiente(db, sugerencia_id)
     if datos.titulo:
@@ -168,6 +170,8 @@ def aceptar_sugerencia(
         .one()
     )
     s.estado, s.revisor_id, s.revisada_en, s.publicacion_id = S.ACEPTADA, mod.id, ahora, pub.id
+    registrar(db, "sugerencias", s.id, "aceptacion", {"titulo": s.titulo, "estado": S.PENDIENTE.value},
+              {"titulo": s.titulo, "estado": S.ACEPTADA.value}, mod)
     db.commit()
     procesar_pendientes(db)  # queda buscable en el chat de inmediato
     return _leer(db, s, con_autor=True)
@@ -178,9 +182,11 @@ def rechazar_sugerencia(
     sugerencia_id: int,
     datos: Rechazo,
     db: Session = Depends(get_db),
-    mod=Depends(require_mod),
+    mod=Depends(require_smod),
 ):
     s = _pendiente(db, sugerencia_id)
     s.estado, s.revisor_id, s.revisada_en, s.motivo = S.RECHAZADA, mod.id, datetime.now(timezone.utc), datos.motivo.strip()
+    registrar(db, "sugerencias", s.id, "rechazo", {"titulo": s.titulo, "estado": S.PENDIENTE.value},
+              {"titulo": s.titulo, "estado": S.RECHAZADA.value, "motivo": s.motivo}, mod)
     db.commit()
     return _leer(db, s, con_autor=True)

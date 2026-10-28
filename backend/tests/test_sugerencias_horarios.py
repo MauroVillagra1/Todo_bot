@@ -20,7 +20,7 @@ def tablas(db):
     engine = db.get_bind()
     for m in (Fuente, Documento, Publicacion, Chunk, Ingesta, MetricaDiaria, Informacion, Evidencia,
               Verificacion, Historial, HorarioClase, Sugerencia, RegistroCambios, CacheRespuesta):
-        m.__table__.create(engine)
+        m.__table__.create(engine, checkfirst=True)
     return db
 
 
@@ -46,7 +46,7 @@ def test_miembro_no_puede_revisar(client, tablas, crear_usuario):
 
 def test_mod_acepta_y_queda_como_publicacion(client, tablas, crear_usuario):
     alumno = crear_usuario("alumno@alu.frt.utn.edu.ar")
-    mod = crear_usuario("mod@doc.frt.utn.edu.ar", RolEnum.MOD)
+    mod = crear_usuario("mod@doc.frt.utn.edu.ar", RolEnum.SMOD)
     sid = client.post("/api/v1/sugerencias/", json=SUGERENCIA, headers=auth(alumno)).json()["id"]
 
     pendientes = client.get("/api/v1/sugerencias/", headers=auth(mod)).json()
@@ -64,7 +64,7 @@ def test_mod_acepta_y_queda_como_publicacion(client, tablas, crear_usuario):
 
 def test_mod_rechaza_con_motivo(client, tablas, crear_usuario):
     alumno = crear_usuario("alumno@alu.frt.utn.edu.ar")
-    mod = crear_usuario("mod@doc.frt.utn.edu.ar", RolEnum.MOD)
+    mod = crear_usuario("mod@doc.frt.utn.edu.ar", RolEnum.SMOD)
     sid = client.post("/api/v1/sugerencias/", json=SUGERENCIA, headers=auth(alumno)).json()["id"]
     r = client.post(f"/api/v1/sugerencias/{sid}/rechazar", json={"motivo": "No hay fuente oficial"}, headers=auth(mod))
     assert r.json()["estado"] == "RECHAZADA"

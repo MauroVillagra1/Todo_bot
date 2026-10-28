@@ -1,5 +1,5 @@
 """
-Router de mesas de examen: la planilla del panel que usa el chat. Edita solo ADMIN; las fechas
+Router de mesas de examen: la planilla del panel que usa el chat. Editan SMOD y ADMIN; las fechas
 las lee cualquier usuario (se muestran en el calendario).
   GET/POST          /api/v1/mesas/fechas         → turnos: mesa, cierre de inscripción y fecha del examen
   PATCH/DELETE      /api/v1/mesas/fechas/{id}
@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user, require_admin
+from app.core.dependencies import get_current_user, require_smod
 from app.ingest.datos_mesas import norma
 from app.models.auditoria import RegistroCambios
 from app.models.cache import CacheRespuesta
@@ -111,7 +111,7 @@ def listar_fechas(db: Session = Depends(get_db), _usuario=Depends(get_current_us
 
 
 @router.post("/fechas", response_model=FechaRead, status_code=status.HTTP_201_CREATED)
-def crear_fecha(datos: FechaCreate, db: Session = Depends(get_db), admin=Depends(require_admin)):
+def crear_fecha(datos: FechaCreate, db: Session = Depends(get_db), admin=Depends(require_smod)):
     f = MesaFecha(**datos.model_dump())
     _validar_fecha(f)
     db.add(f)
@@ -122,7 +122,7 @@ def crear_fecha(datos: FechaCreate, db: Session = Depends(get_db), admin=Depends
 
 
 @router.patch("/fechas/{fecha_id}", response_model=FechaRead)
-def actualizar_fecha(fecha_id: int, datos: FechaBase, db: Session = Depends(get_db), admin=Depends(require_admin)):
+def actualizar_fecha(fecha_id: int, datos: FechaBase, db: Session = Depends(get_db), admin=Depends(require_smod)):
     f = db.get(MesaFecha, fecha_id) or _no_existe()
     antes = _foto(f, CAMPOS_FECHA)
     for campo, valor in datos.model_dump(exclude_unset=True).items():
@@ -140,7 +140,7 @@ def actualizar_fecha(fecha_id: int, datos: FechaBase, db: Session = Depends(get_
 
 
 @router.delete("/fechas/{fecha_id}", status_code=status.HTTP_204_NO_CONTENT)
-def borrar_fecha(fecha_id: int, db: Session = Depends(get_db), admin=Depends(require_admin)):
+def borrar_fecha(fecha_id: int, db: Session = Depends(get_db), admin=Depends(require_smod)):
     f = db.get(MesaFecha, fecha_id) or _no_existe()
     _auditar(db, "mesas_fechas", f, "eliminacion", _foto(f, CAMPOS_FECHA), None, admin)
     db.delete(f)
@@ -151,12 +151,12 @@ def borrar_fecha(fecha_id: int, db: Session = Depends(get_db), admin=Depends(req
 # ── Materias y tribunales ─────────────────────────────────────────────────────
 
 @router.get("/materias", response_model=list[MateriaRead])
-def listar_materias(db: Session = Depends(get_db), _admin=Depends(require_admin)):
+def listar_materias(db: Session = Depends(get_db), _admin=Depends(require_smod)):
     return db.query(MesaMateria).order_by(MesaMateria.mesa, MesaMateria.materia, MesaMateria.sede).all()
 
 
 @router.post("/materias", response_model=MateriaRead, status_code=status.HTTP_201_CREATED)
-def crear_materia(datos: MateriaCreate, db: Session = Depends(get_db), admin=Depends(require_admin)):
+def crear_materia(datos: MateriaCreate, db: Session = Depends(get_db), admin=Depends(require_smod)):
     valores = datos.model_dump()
     valores["materia"] = valores["materia"].strip()
     m = MesaMateria(materia_norm=norma(valores["materia"]), **valores)
@@ -169,7 +169,7 @@ def crear_materia(datos: MateriaCreate, db: Session = Depends(get_db), admin=Dep
 
 @router.patch("/materias/{materia_id}", response_model=MateriaRead)
 def actualizar_materia(materia_id: int, datos: MateriaBase, db: Session = Depends(get_db),
-                       admin=Depends(require_admin)):
+                       admin=Depends(require_smod)):
     m = db.get(MesaMateria, materia_id) or _no_existe()
     antes = _foto(m, CAMPOS_MATERIA)
     for campo, valor in datos.model_dump(exclude_unset=True).items():
@@ -183,7 +183,7 @@ def actualizar_materia(materia_id: int, datos: MateriaBase, db: Session = Depend
 
 
 @router.delete("/materias/{materia_id}", status_code=status.HTTP_204_NO_CONTENT)
-def borrar_materia(materia_id: int, db: Session = Depends(get_db), admin=Depends(require_admin)):
+def borrar_materia(materia_id: int, db: Session = Depends(get_db), admin=Depends(require_smod)):
     m = db.get(MesaMateria, materia_id) or _no_existe()
     _auditar(db, "mesas_materias", m, "eliminacion", _foto(m, CAMPOS_MATERIA), None, admin)
     db.delete(m)
