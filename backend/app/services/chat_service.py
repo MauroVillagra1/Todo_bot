@@ -64,7 +64,8 @@ def _guardar_respuesta(db: Session, usuario: Usuario, conv_id: str, resultado: d
     if pregunta is not None:
         db.add(MensajeChat(conversacion_id=conv_id, usuario_id=usuario.id, rol="user", contenido=pregunta))
     respuesta = MensajeChat(conversacion_id=conv_id, usuario_id=usuario.id, rol="assistant",
-                            contenido=resultado["respuesta"], informacion_ids=_informaciones(resultado))
+                            contenido=resultado["respuesta"], informacion_ids=_informaciones(resultado),
+                            datos={k: resultado.get(k) for k in ("estado", "fuentes", "fecha_informacion")})
     db.add(respuesta)
     db.commit()
     return respuesta
@@ -121,3 +122,44 @@ def votar(db: Session, usuario: Usuario, mensaje_id: int, valor: int,
             nueva = _guardar_respuesta(db, usuario, mensaje.conversacion_id, resultado)
             alternativa = {**resultado, "conversacion_id": mensaje.conversacion_id, "mensaje_id": nueva.id}
     return {"valor": valor, "motivo": motivo.value if motivo else None, "alternativa": alternativa}
+
+
+# ── Historial de conversaciones ───────────────────────────────────────────────
+
+MAX_CONVERSACIONES = 50
+
+
+def listar_conversaciones(db: Session, usuario: Usuario) -> list[dict]:
+    """Las conversaciones del usuario, la más reciente primero, con su primera pregunta como título."""
+    ultimas = (
+        db.query(MensajeChat.conversacion_id, func.max(MensajeChat.creado_en).label("ultima"),
+                 func.count(MensajeChat.id).label("mensajes"), func.min(MensajeChat.id).label("primero"))
+        .filter(MensajeChat.usuario_id == usuario.id)
+        .group_by(MensajeChat.conversacion_id)
+        .order_by(func.max(MensajeChat.creado_en).desc())
+        .limit(MAX_CONVERSACIONES)
+        .all()
+    )
+    titulos = dict(
+        db.query(MensajeChat.id, MensajeChat.contenido).filter(MensajeChat.id.in_([u.primero for u in ultimas])).all()
+    )
+    return [{"id": u.conversacion_id, "titulo": (titulos.get(u.primero) or "")[:80], "ultima": u.ultima,
+             "mensajes": u.mensajes} for u in ultimas]
+
+
+def mensajes_de(db: Session, usuario: Usuario, conversacion_id: str) -> list[MensajeChat]:
+    return (
+        db.query(MensajeChat)
+        .filter(MensajeChat.usuario_id == usuario.id, MensajeChat.conversacion_id == conversacion_id)
+        .order_by(MensajeChat.id)
+        .all()
+    )
+
+
+def borrar_conversacion(db: Session, usuario: Usuario, conversacion_id: str) -> int:
+    """Borra los mensajes (y sus votos, en cascada). Devuelve cuántos había."""
+    mensajes = mensajes_de(db, usuario, conversacion_id)
+    for m in mensajes:
+        db.delete(m)
+    db.commit()
+    return len(mensajes)

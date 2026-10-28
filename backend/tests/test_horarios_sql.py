@@ -341,3 +341,13 @@ def test_consulta_de_horarios_no_baja_el_pdf(base):
         event.remove(base.get_bind(), "before_cursor_execute", escuchar)
     consultas = " ".join(sqls)
     assert "contenido_original" not in consultas and "texto_extraido" not in consultas
+
+
+def test_materias_de_un_anio_es_una_lista_no_la_grilla(base):
+    r = responder(base, "¿Cuáles son las materias de cuarto año?")
+    texto = r["respuesta"]
+    assert texto.startswith("Materias de **4º año** (Plan 2023)")
+    assert "**Obligatorias**" in texto and "**Electivas**" in texto
+    assert "Redes de Información" in texto or "Redes de Datos" in texto
+    assert " a " not in texto.split("**Obligatorias**")[1].split("\n")[1]  # sin horas: solo nombre, período y comisiones
+    assert responder(base, "materias de 5to año") is None  # no hay horarios de 5º en el PDF de prueba

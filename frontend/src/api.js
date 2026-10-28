@@ -248,4 +248,57 @@ export async function borrarBloque(id) {
   await api.delete(`/api/v1/horarios/${id}`)
 }
 
+// ── Avisos de paro (banner del chat) ──────────────────────────────────────────
+
+export async function listarAvisos() {
+  const { data } = await api.get('/api/v1/informacion/avisos')
+  return data  // [{ informacion_id, titulo, contenido, fecha_inicio, fecha_fin, ... }]
+}
+
+/** MOD/ADMIN: deja de usarse en el chat (ej. un paro que se levantó). */
+export async function darDeBajaInformacion(id) {
+  await api.delete(`/api/v1/informacion/${id}`)
+}
+
+// ── Mesas de examen (solo ADMIN) ──────────────────────────────────────────────
+
+export const listarMesasFechas = () => api.get('/api/v1/mesas/fechas').then(r => r.data)
+export const crearMesaFecha = payload => api.post('/api/v1/mesas/fechas', payload).then(r => r.data)
+export const actualizarMesaFecha = (id, cambios) => api.patch(`/api/v1/mesas/fechas/${id}`, cambios).then(r => r.data)
+export const borrarMesaFecha = id => api.delete(`/api/v1/mesas/fechas/${id}`)
+export const listarMesasMaterias = () => api.get('/api/v1/mesas/materias').then(r => r.data)
+export const crearMesaMateria = payload => api.post('/api/v1/mesas/materias', payload).then(r => r.data)
+export const actualizarMesaMateria = (id, cambios) => api.patch(`/api/v1/mesas/materias/${id}`, cambios).then(r => r.data)
+export const borrarMesaMateria = id => api.delete(`/api/v1/mesas/materias/${id}`)
+
+// ── Calendario académico (leer: todos; editar: ADMIN) ─────────────────────────
+
+export const listarCalendario = () => api.get('/api/v1/calendario/').then(r => r.data)
+export const crearEvento = payload => api.post('/api/v1/calendario/', payload).then(r => r.data)
+export const actualizarEvento = (id, cambios) => api.patch(`/api/v1/calendario/${id}`, cambios).then(r => r.data)
+export const borrarEvento = id => api.delete(`/api/v1/calendario/${id}`)
+
+// ── Documentos importantes (descargar: todos; subir y borrar: ADMIN) ──────────
+
+export const listarDocumentos = () => api.get('/api/v1/documentos').then(r => r.data)
+export const urlDocumento = id => `${BASE_URL}/api/v1/documentos/${id}/archivo`
+
+/** archivo: File del input; nombre obligatorio; descripción opcional (si falta, la genera el backend). */
+export async function subirDocumento(archivo, nombre, descripcion) {
+  const form = new FormData()
+  form.append('archivo', archivo)
+  form.append('nombre', nombre)
+  if (descripcion?.trim()) form.append('descripcion', descripcion.trim())
+  const { data } = await api.post('/api/v1/documentos', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  return data
+}
+
+export const borrarDocumento = id => api.delete(`/api/v1/documentos/${id}`)
+
+// ── Historial de conversaciones ───────────────────────────────────────────────
+
+export const listarConversaciones = () => api.get('/api/v1/chat/conversaciones').then(r => r.data)
+export const obtenerConversacion = id => api.get(`/api/v1/chat/conversaciones/${id}`).then(r => r.data)
+export const borrarConversacion = id => api.delete(`/api/v1/chat/conversaciones/${id}`)
+
 export default api

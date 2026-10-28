@@ -14,7 +14,8 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
 from app.routers import (
-    admin, auth, usuarios, chat, fuentes, horarios, informacion, reportes, sugerencias, webhooks,
+    admin, auth, calendario, chat, documentos, fuentes, horarios, informacion, mesas, reportes, sugerencias,
+    usuarios, webhooks,
 )
 
 settings = get_settings()
@@ -73,6 +74,9 @@ app.include_router(usuarios.router, prefix=API_PREFIX)
 app.include_router(chat.router,     prefix=API_PREFIX)
 app.include_router(fuentes.router,  prefix=API_PREFIX)
 app.include_router(informacion.router, prefix=API_PREFIX)
+app.include_router(mesas.router, prefix=API_PREFIX)
+app.include_router(calendario.router, prefix=API_PREFIX)
+app.include_router(documentos.router, prefix=API_PREFIX)
 app.include_router(admin.router,    prefix=API_PREFIX)
 app.include_router(sugerencias.router, prefix=API_PREFIX)
 app.include_router(horarios.router, prefix=API_PREFIX)

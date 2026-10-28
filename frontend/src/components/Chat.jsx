@@ -1,10 +1,18 @@
 /**
  * Chat — pantalla principal del asistente UTNIA.
- * Incluye sidebar con navegación Chat / Sugerir dato (todos) / Panel (staff y admin).
+ * Sidebar: Chat, Calendario, Documentos y Sugerir dato (todos), Panel (staff y admin) y el
+ * historial de conversaciones del usuario. Arriba del chat, un aviso por cada paro vigente.
  */
 import { useState, useRef, useEffect } from 'react'
-import { Send, LogOut, Sparkles, User, LayoutDashboard, MessageSquare, Lightbulb } from 'lucide-react'
-import { enviarMensaje as apiEnviarMensaje } from '../api'
+import {
+  Send, LogOut, Sparkles, User, LayoutDashboard, MessageSquare, Lightbulb, CalendarDays, FileText, Trash2,
+  AlertTriangle, X,
+} from 'lucide-react'
+import {
+  enviarMensaje as apiEnviarMensaje, borrarConversacion, listarAvisos, listarConversaciones, obtenerConversacion,
+} from '../api'
+import Calendario from './Calendario'
+import Documentos from './Documentos'
 import MensajeBurbuja from './MensajeBurbuja'
 import Panel from './Panel'
 import Sugerir from './Sugerir'
@@ -18,15 +26,39 @@ const ROLES_DISPLAY = {
 const PREGUNTAS_EJEMPLO = [
   '¿Qué materias tengo los lunes en la 1K01?',
   '¿Cuándo se dicta Análisis Matemático I?',
-  '¿Qué materias da Moyano?',
-  '¿Hay becas abiertas?',
+  '¿Cuándo rindo Sistemas Operativos?',
+  '¿Hay clases mañana?',
 ]
 
 // La UI solo oculta el acceso: los permisos reales se validan en el backend
 const TIENE_PANEL = ['MOD', 'ADMIN']
 
-function ahora() {
-  return new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+function ahora(fecha = new Date()) {
+  return new Date(fecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+}
+
+/** Mensaje guardado en el backend → formato de MensajeBurbuja. */
+function desdeHistorial(m) {
+  return m.rol === 'user'
+    ? { id: `h${m.id}`, tipo: 'usuario', texto: m.contenido, timestamp: ahora(m.creado_en) }
+    : { id: `h${m.id}`, tipo: 'asistente', texto: m.contenido, timestamp: ahora(m.creado_en), estado: m.estado,
+        fuentes: m.fuentes ?? [], fecha: m.fecha_informacion, mensajeId: m.id }
+}
+
+/** Paro vigente: aviso arriba del chat (se puede cerrar por esta sesión). */
+function AvisoParo({ aviso, onCerrar }) {
+  const cerrada = /CERRADA/.test(aviso.contenido)
+  return (
+    <div className={`flex gap-3 items-start rounded-xl border px-4 py-3 text-sm font-body ${
+      cerrada ? 'border-red-500/30 bg-red-500/10 text-red-200' : 'border-amber-500/30 bg-amber-500/10 text-amber-100'}`}>
+      <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+      <div className="min-w-0 flex-1">
+        <p className="font-semibold">{aviso.titulo}</p>
+        <p className="text-xs opacity-90 mt-0.5 whitespace-pre-line">{aviso.contenido.split('\n').slice(1).join('\n')}</p>
+      </div>
+      <button onClick={onCerrar} aria-label="Cerrar aviso" className="opacity-70 hover:opacity-100"><X size={14} /></button>
+    </div>
+  )
 }
 
 // ── Logo UTNIA ────────────────────────────────────────────────────────────────
@@ -50,7 +82,10 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
   const [input, setInput]                   = useState('')
   const [escribiendo, setEscribiendo]       = useState(false)
   const [conversacionId, setConversacionId] = useState(null)
-  const [vista, setVista]                   = useState('chat') // 'chat' | 'sugerir' | 'panel'
+  const [vista, setVista]                   = useState('chat') // 'chat' | 'calendario' | 'documentos' | 'sugerir' | 'panel'
+  const [conversaciones, setConversaciones] = useState([])
+  const [avisos, setAvisos]                 = useState([])
+  const [avisosCerrados, setAvisosCerrados] = useState([])
   const bottomRef                            = useRef(null)
   const inputRef                             = useRef(null)
 
@@ -61,12 +96,36 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [mensajes, escribiendo])
 
+  const cargarConversaciones = () => listarConversaciones().then(setConversaciones).catch(() => {})
+  useEffect(() => {
+    cargarConversaciones()
+    listarAvisos().then(setAvisos).catch(() => {})
+  }, [])
+
+  async function abrirConversacion(id) {
+    try {
+      const historial = await obtenerConversacion(id)
+      setMensajes(historial.map(desdeHistorial))
+      setConversacionId(id)
+      setVista('chat')
+    } catch { cargarConversaciones() }
+  }
+
+  async function eliminarConversacion(c) {
+    if (!confirm(`¿Borrar la conversación «${c.titulo}»?`)) return
+    try {
+      await borrarConversacion(c.id)
+      setConversaciones(prev => prev.filter(x => x.id !== c.id))
+      if (c.id === conversacionId) nuevaConsulta()
+    } catch { /* ya no existía */ }
+  }
+
   async function enviar(textoForzado) {
     const texto = (textoForzado ?? input).trim()
     if (!texto || escribiendo) return
 
-    // Si está en panel, cambiar a chat
-    if (vista === 'panel') setVista('chat')
+    // Si está en otra vista, volver al chat
+    if (vista !== 'chat') setVista('chat')
 
     const msgUsuario = { id: Date.now(), tipo: 'usuario', texto, timestamp: ahora() }
     setMensajes(prev => [...prev, msgUsuario])
@@ -76,6 +135,7 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
     try {
       const data = await apiEnviarMensaje(texto, conversacionId)
       if (data.conversacion_id) setConversacionId(data.conversacion_id)
+      cargarConversaciones()
       setMensajes(prev => [
         ...prev,
         {
@@ -172,6 +232,8 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
         <nav className="flex flex-col gap-1 px-3 mb-4">
           {[
             { id: 'chat', label: 'Chat', Icono: MessageSquare },
+            { id: 'calendario', label: 'Calendario', Icono: CalendarDays },
+            { id: 'documentos', label: 'Documentos', Icono: FileText },
             { id: 'sugerir', label: 'Sugerir dato', Icono: Lightbulb },
             ...(tienePanel ? [{ id: 'panel', label: 'Panel', Icono: LayoutDashboard }] : []),
           ].map(({ id, label, Icono }) => (
@@ -192,7 +254,31 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
           ))}
         </nav>
 
-        <div className="flex-1" />
+        <div className="flex-1 md:hidden" />
+        {/* Historial de conversaciones (solo con la barra ancha) */}
+        <div className="flex-1 min-h-0 overflow-y-auto chat-scroll px-3 hidden md:block">
+          {conversaciones.length > 0 && (
+            <>
+              <p className="text-[10px] uppercase tracking-wide text-[#4b4b53] font-body font-medium px-1 mb-1">Conversaciones</p>
+              <ul className="space-y-0.5">
+                {conversaciones.map(c => (
+                  <li key={c.id} className="group flex items-center">
+                    <button onClick={() => abrirConversacion(c.id)} title={c.titulo}
+                            className={`flex-1 min-w-0 text-left text-xs font-body px-2 py-1.5 rounded-lg truncate transition-colors ${
+                              c.id === conversacionId && vista === 'chat'
+                                ? 'bg-[#17171b] text-[#f4f4f5]' : 'text-[#8b8b93] hover:text-[#f4f4f5] hover:bg-[#17171b]'}`}>
+                      {c.titulo || 'Conversación'}
+                    </button>
+                    <button onClick={() => eliminarConversacion(c)} title="Borrar conversación"
+                            className="opacity-0 group-hover:opacity-100 text-[#4b4b53] hover:text-red-400 p-1">
+                      <Trash2 size={12} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
 
         {/* Usuario / logout */}
         <div className="px-3 pt-4 border-t border-[#1e1e22]">
@@ -225,6 +311,17 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
         <div className="flex-1 overflow-hidden">
           <Panel usuario={usuario} darkMode />
         </div>
+      ) : vista === 'documentos' ? (
+        <div className="flex-1 overflow-hidden">
+          <Documentos esAdmin={usuario.rol === 'ADMIN'} />
+        </div>
+      ) : vista === 'calendario' ? (
+        <div className="flex-1 overflow-y-auto bg-[#0a0a0c] text-[#f4f4f5] font-body p-6 [color-scheme:dark]">
+          <div className="max-w-3xl mx-auto space-y-4">
+            <h2 className="font-display text-xl font-semibold">Calendario académico</h2>
+            <Calendario />
+          </div>
+        </div>
       ) : vista === 'sugerir' ? (
         <div className="flex-1 overflow-hidden">
           <Sugerir />
@@ -232,6 +329,16 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
       ) : (
         /* ── Área de chat ─────────────────────────────────────────────── */
         <div className="flex-1 flex flex-col min-w-0">
+
+          {/* Paros vigentes */}
+          {avisos.filter(a => !avisosCerrados.includes(a.informacion_id)).length > 0 && (
+            <div className="px-4 pt-4 space-y-2 max-w-2xl w-full mx-auto">
+              {avisos.filter(a => !avisosCerrados.includes(a.informacion_id)).map(a => (
+                <AvisoParo key={a.informacion_id} aviso={a}
+                           onCerrar={() => setAvisosCerrados(prev => [...prev, a.informacion_id])} />
+              ))}
+            </div>
+          )}
 
           {/* Main scroll */}
           <main className="flex-1 overflow-y-auto chat-scroll px-4">
@@ -243,7 +350,7 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
                   Preguntale a UTNIA
                 </h1>
                 <p className="font-body text-sm text-[#8b8b93] mb-8">
-                  ¡Hola, {usuario.nombre.split(' ')[0]}! Podés preguntarme sobre horarios, aulas y materias.
+                  ¡Hola, {usuario.nombre.split(' ')[0]}! Podés preguntarme sobre horarios, mesas de examen, el calendario y trámites.
                 </p>
                 <div className="flex flex-col gap-2.5 w-full max-w-md">
                   {PREGUNTAS_EJEMPLO.map(p => (

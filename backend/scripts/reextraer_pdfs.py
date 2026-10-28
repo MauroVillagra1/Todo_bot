@@ -35,7 +35,7 @@ def main() -> None:
                 else:
                     contenido = httpx.get(doc.url, timeout=60, headers={"User-Agent": USER_AGENT}).content
                 paginas, grillas = extraer_pdf(contenido)
-                guardar_grillas(db, doc.id, grillas)
+                guardar_grillas(db, doc.id, grillas, doc.nombre)
                 texto = "\n\n".join(p for p in paginas if p)
 
                 db.query(Chunk).filter(Chunk.documento_id == doc.id).delete()

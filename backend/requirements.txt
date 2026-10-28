@@ -27,3 +27,6 @@ beautifulsoup4==4.13.4
 # IA
 httpx==0.27.0
 python-dateutil==2.9.0
+
+# Documentos importantes: texto de los PDFs subidos desde el panel (para que el chat sepa qué son)
+pypdf==6.1.1

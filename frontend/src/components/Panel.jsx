@@ -6,16 +6,21 @@
  *   Sugerencias → datos propuestos por usuarios: aceptar (con correcciones) o rechazar con motivo
  *   Reportes  → respuestas votadas como "dato incorrecto": sacar ese dato del chat o descartar
  *   Horarios  → solo ADMIN: grilla año → comisión → materias, editable (GrillaHorarios)
+ *   Mesas     → solo ADMIN: fechas de examen por turno y materias con su tribunal (GrillaMesas)
+ *   Calendario → solo ADMIN: calendario académico editable (Calendario)
  *   Usuarios  → solo ADMIN: listar/buscar, dar o quitar MOD, suspender (temporal o permanente)
  * La UI solo oculta lo que no corresponde: los permisos reales se validan en el backend.
  */
 import { useEffect, useState } from 'react'
 import {
-  aceptarSugerencia, actualizarFuente, cambiarRol, cargarInformacion, cargarParo, cargarPublicacionManual, levantarSuspension,
+  aceptarSugerencia, actualizarFuente, cambiarRol, cargarInformacion, cargarParo, cargarPublicacionManual, darDeBajaInformacion,
+  listarAvisos, levantarSuspension,
   listarFuentes, listarReportes, listarSugerencias, listarUsuarios, obtenerResumen, rechazarSugerencia,
   resolverReporte, resumenVotos, suspenderUsuario,
 } from '../api'
+import Calendario from './Calendario'
 import GrillaHorarios from './GrillaHorarios'
+import GrillaMesas from './GrillaMesas'
 import { boton, campo, errorDe, fechaHora, tarjeta } from './ui'
 
 // ── Resumen ───────────────────────────────────────────────────────────────────
@@ -298,7 +303,7 @@ const TIPOS_INFORMACION = [
   ['TRAMITE', 'Trámite'], ['BECA', 'Beca'], ['CONVOCATORIA', 'Convocatoria / empleo'], ['EVENTO', 'Evento'],
   ['NOTICIA', 'Noticia'], ['OTRO', 'Otro'],
 ]
-const INFO_VACIA = { tipo: '', url: '', contenido: '' }
+const INFO_VACIA = { tipo: '', url: '', contenido: '', sin_vencimiento: false }
 
 /** Formulario con envío, mensaje de resultado y vista previa de lo que quedó cargado. */
 function useEnvio(enviarFn, limpiar) {
@@ -338,10 +343,10 @@ function Resultado({ mensaje, cargada }) {
   )
 }
 
-function FormParo() {
+function FormParo({ onCargado }) {
   const [form, setForm] = useState(PARO_VACIO)
   const cambiar = c => e => setForm(prev => ({ ...prev, [c]: e.target.value }))
-  const { enviando, mensaje, cargada, enviar } = useEnvio(cargarParo, () => setForm(PARO_VACIO))
+  const { enviando, mensaje, cargada, enviar } = useEnvio(cargarParo, () => { setForm(PARO_VACIO); onCargado?.() })
   const elegido = TIPOS_PARO.find(([id]) => id === form.tipo)
 
   function enviarParo(e) {
@@ -395,7 +400,8 @@ function FormInformacion() {
   const { enviando, mensaje, cargada, enviar } = useEnvio(cargarInformacion, () => setForm(INFO_VACIA))
 
   return (
-    <form onSubmit={e => enviar(e, { tipo: form.tipo, contenido: form.contenido, url: form.url.trim() || null })}
+    <form onSubmit={e => enviar(e, { tipo: form.tipo, contenido: form.contenido, url: form.url.trim() || null,
+                                     sin_vencimiento: form.sin_vencimiento })}
           className={`${tarjeta} space-y-3`}>
       <div>
         <h3 className="text-sm font-semibold text-[#f4f4f5]">Cargar información</h3>
@@ -408,16 +414,49 @@ function FormInformacion() {
       <input type="url" placeholder="Link (opcional)" value={form.url} onChange={cambiar('url')} className={campo} />
       <textarea required minLength={10} rows={6} placeholder="Información" value={form.contenido}
                 onChange={cambiar('contenido')} className={campo} />
+      <label className="flex items-center gap-2 text-xs text-[#a1a1aa]">
+        <input type="checkbox" checked={form.sin_vencimiento} className="accent-[#e8592e]"
+               onChange={e => setForm(prev => ({ ...prev, sin_vencimiento: e.target.checked }))} />
+        No vence (reglamentos, requisitos, normativa). Si no, vence con la última fecha del texto o al año.
+      </label>
       <button type="submit" disabled={enviando} className={boton}>{enviando ? 'Cargando…' : 'Cargar'}</button>
       <Resultado mensaje={mensaje} cargada={cargada} />
     </form>
   )
 }
 
+function ParosVigentes({ version }) {
+  const [paros, setParos] = useState([])
+  const [error, setError] = useState(null)
+  useEffect(() => { listarAvisos().then(setParos).catch(() => {}) }, [version])
+  async function baja(p) {
+    if (!confirm(`¿Dar de baja «${p.titulo}»? Deja de mostrarse y el chat no lo responde más.`)) return
+    try { await darDeBajaInformacion(p.informacion_id); setParos(prev => prev.filter(x => x.informacion_id !== p.informacion_id)) }
+    catch (err) { setError(errorDe(err, 'No se pudo dar de baja')) }
+  }
+  if (!paros.length) return null
+  return (
+    <div className={tarjeta}>
+      <h3 className="text-sm font-semibold text-[#f4f4f5] mb-2">Paros vigentes (se muestran arriba del chat)</h3>
+      <ul className="divide-y divide-[#1e1e22]">
+        {paros.map(p => (
+          <li key={p.informacion_id} className="py-2 flex items-center justify-between gap-3 text-sm">
+            <span className="text-[#f4f4f5]">{p.titulo}</span>
+            <button onClick={() => baja(p)} className="text-xs text-red-400 hover:underline flex-shrink-0">Dar de baja</button>
+          </li>
+        ))}
+      </ul>
+      {error && <p className="text-xs text-red-400 mt-1">{error}</p>}
+    </div>
+  )
+}
+
 function Cargar() {
+  const [version, setVersion] = useState(0)
   return (
     <div className="space-y-6">
-      <FormParo />
+      <ParosVigentes version={version} />
+      <FormParo onCargado={() => setVersion(v => v + 1)} />
       <FormInformacion />
     </div>
   )
@@ -768,7 +807,8 @@ export default function Panel({ usuario }) {
     { id: 'fuentes', label: 'Fuentes' },
     { id: 'sugerencias', label: 'Sugerencias' },
     { id: 'reportes', label: 'Reportes' },
-    ...(esAdmin ? [{ id: 'horarios', label: 'Horarios' }, { id: 'usuarios', label: 'Usuarios' }] : []),
+    ...(esAdmin ? [{ id: 'horarios', label: 'Horarios' }, { id: 'mesas', label: 'Mesas' },
+                   { id: 'calendario', label: 'Calendario' }, { id: 'usuarios', label: 'Usuarios' }] : []),
   ]
   const [tab, setTab] = useState('resumen')
 
@@ -787,13 +827,15 @@ export default function Panel({ usuario }) {
         </div>
       </div>
       <div className="flex-1 overflow-y-auto p-6">
-        <div className={`${tab === 'horarios' ? 'max-w-6xl' : 'max-w-3xl'} mx-auto`}>
+        <div className={`${['horarios', 'mesas', 'calendario'].includes(tab) ? 'max-w-6xl' : 'max-w-3xl'} mx-auto`}>
           {tab === 'resumen' && <Resumen />}
           {tab === 'cargar' && <Cargar />}
           {tab === 'fuentes' && <Fuentes esAdmin={esAdmin} />}
           {tab === 'sugerencias' && <Sugerencias />}
           {tab === 'reportes' && <Reportes />}
           {tab === 'horarios' && esAdmin && <GrillaHorarios />}
+          {tab === 'mesas' && esAdmin && <GrillaMesas />}
+          {tab === 'calendario' && esAdmin && <Calendario editable />}
           {tab === 'usuarios' && esAdmin && <Usuarios />}
         </div>
       </div>

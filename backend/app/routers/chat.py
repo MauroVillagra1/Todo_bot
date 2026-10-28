@@ -2,9 +2,10 @@
 Router del chatbot.
 El límite de consultas por minuto se valida contra Postgres (ver chat_service).
 """
+from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -13,7 +14,8 @@ from app.core.dependencies import get_current_user
 from app.models.usuario import Usuario
 from app.models.voto import MotivoVotoEnum
 from app.services.chat_service import (
-    LimiteExcedido, MensajeNoEncontrado, responder_consulta, verificar_limite, votar,
+    LimiteExcedido, MensajeNoEncontrado, borrar_conversacion, listar_conversaciones, mensajes_de,
+    responder_consulta, verificar_limite, votar,
 )
 
 router = APIRouter(prefix="/chat", tags=["Chatbot IA"])
@@ -103,3 +105,47 @@ def votar_respuesta(
     except LimiteExcedido:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                             detail="Demasiadas consultas. Esperá un minuto e intentá de nuevo.")
+
+
+# ── Historial: cada usuario ve y retoma sus conversaciones ────────────────────
+
+class ConversacionResumen(BaseModel):
+    id: str
+    titulo: str
+    ultima: datetime
+    mensajes: int
+
+
+class MensajeHistorial(BaseModel):
+    id: int
+    rol: str  # user | assistant
+    contenido: str
+    creado_en: datetime
+    estado: str | None = None
+    fuentes: list[FuenteRespuesta] = []
+    fecha_informacion: str | None = None
+
+
+@router.get("/conversaciones", response_model=list[ConversacionResumen])
+def conversaciones(current_user: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
+    return listar_conversaciones(db, current_user)
+
+
+@router.get("/conversaciones/{conversacion_id}", response_model=list[MensajeHistorial])
+def conversacion(conversacion_id: str, current_user: Usuario = Depends(get_current_user),
+                 db: Session = Depends(get_db)):
+    mensajes = mensajes_de(db, current_user, conversacion_id)
+    if not mensajes:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversación no encontrada")
+    return [
+        MensajeHistorial(id=m.id, rol=m.rol, contenido=m.contenido, creado_en=m.creado_en,
+                         **{k: v for k, v in (m.datos or {}).items() if k in ("estado", "fuentes", "fecha_informacion")})
+        for m in mensajes
+    ]
+
+
+@router.delete("/conversaciones/{conversacion_id}", status_code=status.HTTP_204_NO_CONTENT)
+def borrar(conversacion_id: str, current_user: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not borrar_conversacion(db, current_user, conversacion_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversación no encontrada")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

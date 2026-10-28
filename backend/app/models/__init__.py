@@ -13,6 +13,9 @@ from app.models.horario import HorarioClase
 from app.models.codigo import CodigoVerificacion
 from app.models.sugerencia import Sugerencia
 from app.models.voto import Voto
+from app.models.mesa import MesaFecha, MesaMateria
+from app.models.calendario import EventoCalendario
+from app.models.documento_importante import DocumentoImportante
 
 __all__ = [
     "Usuario",
@@ -32,4 +35,8 @@ __all__ = [
     "HorarioClase",
     "Sugerencia",
     "Voto",
+    "MesaFecha",
+    "MesaMateria",
+    "EventoCalendario",
+    "DocumentoImportante",
 ]

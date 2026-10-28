@@ -10,12 +10,13 @@ import { boton, campo, errorDe, tarjeta } from './ui'
 
 const DIAS = { 1: 'Lunes', 2: 'Martes', 3: 'Miércoles', 4: 'Jueves', 5: 'Viernes', 6: 'Sábado' }
 const PERIODOS = ['Anual', 'Primer cuatrimestre', 'Segundo cuatrimestre']
-const celda = 'w-full bg-transparent px-2 py-1.5 text-xs text-[#f4f4f5] placeholder-[#4b4b53] rounded focus:outline-none focus:bg-[#141417] focus:ring-1 focus:ring-[#e8592e]/50'
+const TURNOS = ['Mañana', 'Tarde', 'Noche']
+export const celda = 'w-full bg-transparent px-2 py-1.5 text-xs text-[#f4f4f5] placeholder-[#4b4b53] rounded focus:outline-none focus:bg-[#141417] focus:ring-1 focus:ring-[#e8592e]/50'
 
 const claveGrupo = b => `${b.comision}|${b.plan ?? ''}|${b.periodo ?? ''}`
 
 /** Input que guarda al perder el foco (o con Enter) solo si el valor cambió. */
-function Celda({ valor, onGuardar, placeholder, tipo = 'text', ancho }) {
+export function Celda({ valor, onGuardar, placeholder, tipo = 'text', ancho }) {
   const [v, setV] = useState(valor ?? '')
   useEffect(() => { setV(valor ?? '') }, [valor])
   const guardar = () => { if (v !== (valor ?? '')) onGuardar(v).catch(() => setV(valor ?? '')) }
@@ -101,15 +102,31 @@ function TablaComision({ bloques, onCambio, onBorrado, onCreado }) {
   const [agregando, setAgregando] = useState(false)
   const [error, setError] = useState(null)
   const b0 = bloques[0]
-  const detalle = [b0.plan && `Plan ${b0.plan}`, b0.periodo, b0.turno && `Turno ${b0.turno.toLowerCase()}`].filter(Boolean).join(' · ')
+  const detalle = [b0.plan && `Plan ${b0.plan}`, b0.periodo].filter(Boolean).join(' · ')
+
+  async function cambiarTurno(turno) {
+    setError(null)
+    try {
+      for (const b of bloques) onCambio(await actualizarBloque(b.id, { turno: turno || null }))
+    } catch (err) { setError(errorDe(err, 'No se pudo cambiar el turno')) }
+  }
   const ordenados = [...bloques].sort((a, b) => a.dia - b.dia || a.inicio.localeCompare(b.inicio))
 
   return (
     <div className={`${tarjeta} !p-0 overflow-hidden`}>
       <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-[#1e1e22]">
         <div>
-          <h4 className="text-sm font-semibold text-[#f4f4f5]">{b0.comision}</h4>
-          {detalle && <p className="text-xs text-[#8b8b93]">{detalle}</p>}
+          <h4 className="text-sm font-semibold text-[#f4f4f5]">
+            {b0.comision ?? (b0.origen?.toLowerCase().includes('anexo') ? 'Anexo Concepción' : 'Sin comisión')}
+          </h4>
+          <div className="flex items-center gap-2 text-xs text-[#8b8b93]">
+            {detalle && <span>{detalle}</span>}
+            <select value={TURNOS.includes(b0.turno) ? b0.turno : ''} onChange={e => cambiarTurno(e.target.value)}
+                    className="bg-[#141417] border border-[#232327] rounded-md px-1.5 py-0.5 text-xs text-[#c7c7cf]" title="Turno">
+              <option value="">{b0.turno && !TURNOS.includes(b0.turno) ? b0.turno : 'Sin turno'}</option>
+              {TURNOS.map(t => <option key={t}>{t}</option>)}
+            </select>
+          </div>
         </div>
         <button onClick={() => setAgregando(true)} className="flex items-center gap-1 text-xs text-[#f2894f] hover:underline">
           <Plus size={13} /> Agregar materia
@@ -163,7 +180,10 @@ function NuevaComision({ onCreado }) {
         <select value={f.periodo} onChange={cambiar('periodo')} className={campo}>
           {PERIODOS.map(p => <option key={p}>{p}</option>)}
         </select>
-        <input placeholder="Turno (Mañana, Tarde, Noche)" value={f.turno} onChange={cambiar('turno')} className={campo} />
+        <select value={f.turno} onChange={cambiar('turno')} className={campo} title="Turno">
+          <option value="">Turno…</option>
+          {TURNOS.map(t => <option key={t}>{t}</option>)}
+        </select>
         <select value={f.dia} onChange={cambiar('dia')} className={campo}>
           {Object.entries(DIAS).map(([n, d]) => <option key={n} value={n}>{d}</option>)}
         </select>

@@ -24,7 +24,9 @@ from app.models.informacion import Informacion
 from app.models.ingesta import Chunk
 from app.rag.conversacion import responder_conversacion
 from app.rag.extractivo import responder_extractivo
+from app.rag.calendario import responder_calendario
 from app.rag.horarios import responder_horario
+from app.rag.mesas import responder_mesa
 from app.rag.search import MAX_RESULTADOS, Resultado, buscar
 from app.services import llm
 from app.services.metricas import incrementar
@@ -216,6 +218,16 @@ def _responder_sin_cache(db: Session, pregunta: str, historial: list[dict], ante
     if charla:
         incrementar(db, "conversacion")
         return charla
+
+    # Calendario académico ("¿hay clases mañana?", feriados, cuatrimestres) y mesas de examen: SQL, sin LLM
+    calendario = responder_calendario(db, pregunta)
+    if calendario:
+        incrementar(db, "consultas_calendario_sql")
+        return calendario
+    mesa = responder_mesa(db, pregunta)
+    if mesa:
+        incrementar(db, "consultas_mesas_sql")
+        return mesa
 
     # Horarios: se responden con SQL sobre las grillas, sin LLM
     horario = responder_horario(db, pregunta, anterior)

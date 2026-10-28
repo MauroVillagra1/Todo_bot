@@ -3,6 +3,8 @@ Router de carga directa de información (MOD y ADMIN).
   POST /api/v1/informacion       → un dato cualquiera: tipo (obligatorio), texto (obligatorio), link (opcional)
   POST /api/v1/informacion/paro  → paro docente, no docente o ambos, con fecha y cantidad de días.
        El texto lo arma el backend: si la facultad queda abierta o cerrada sale del tipo de paro.
+  GET  /api/v1/informacion/avisos → paros vigentes (cualquier usuario): el banner del chat
+  DELETE /api/v1/informacion/{id} → dar de baja algo cargado por un moderador (ej. un paro levantado)
 
 Entra por el mismo pipeline que la carga manual (publicación → chunks → INFORMACION) y queda
 buscable en el chat de inmediato. El tipo elegido por el MOD manda sobre la clasificación automática.
@@ -12,18 +14,24 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from html import escape
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field, HttpUrl
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.dependencies import require_mod
+from app.core.dependencies import get_current_user, require_mod
 from app.ingest.pipeline import guardar_publicacion
 from app.ingest.sources import ItemCrudo
 from app.ingest.verify import procesar_pendientes
-from app.models.informacion import Evidencia, Informacion, TipoInformacionEnum
+from app.ingest.verify import estado_por_confiabilidad
+from app.models.cache import CacheRespuesta
+from app.models.informacion import (
+    EstadoInformacionEnum as E, Evidencia, Informacion, TipoInformacionEnum, Verificacion,
+)
 from app.models.ingesta import Fuente, Publicacion, TipoFuenteEnum
+from app.rag.fechas import hoy_argentina
+from app.services.avisos import PREFIJO_PARO, paros
 
 router = APIRouter(prefix="/informacion", tags=["Información"])
 
@@ -44,6 +52,8 @@ class InformacionManual(BaseModel):
     tipo: TipoInformacionEnum
     contenido: str = Field(min_length=10, max_length=20000)
     url: HttpUrl | None = None
+    # Reglamentos, normativa, requisitos: no tienen fecha de vencimiento
+    sin_vencimiento: bool = False
 
 
 class Paro(BaseModel):
@@ -60,6 +70,7 @@ class InformacionCargada(BaseModel):
     contenido: str
     tipo: str
     estado: str
+    fecha_inicio: date | None = None
     fecha_fin: date | None
 
 
@@ -73,12 +84,12 @@ def _fuente_moderadores(db: Session) -> Fuente:
     return fuente
 
 
-def _cargar(db: Session, tipo: TipoInformacionEnum, titulo: str, contenido: str,
-            url: HttpUrl | None) -> InformacionCargada:
+def _cargar(db: Session, tipo: TipoInformacionEnum, titulo: str, contenido: str, url: HttpUrl | None,
+            prefijo: str = "moderador:", sin_vencimiento: bool = False) -> InformacionCargada:
     fuente = _fuente_moderadores(db)
     ahora = datetime.now(timezone.utc)
     item = ItemCrudo(
-        id_externo=f"moderador:{uuid.uuid4().hex}",
+        id_externo=f"{prefijo}{uuid.uuid4().hex}",
         url=str(url) if url else fuente.url,
         titulo=titulo,
         contenido_html="".join(f"<p>{escape(linea)}</p>" for linea in contenido.splitlines()),
@@ -97,9 +108,19 @@ def _cargar(db: Session, tipo: TipoInformacionEnum, titulo: str, contenido: str,
         .one()
     )
     info.tipo = tipo  # lo eligió el MOD: manda sobre las reglas de clasificación
+    if sin_vencimiento and info.fecha_fin:
+        info.fecha_fin = None
+        info.estado = estado_por_confiabilidad(fuente.confiabilidad_base)
+        db.add(Verificacion(informacion_id=info.id, resultado=info.estado, puntuacion=fuente.confiabilidad_base,
+                            explicacion="Sin vencimiento: lo indicó quien la cargó (normativa o requisito permanente)"))
     db.commit()
+    return _leer(info)
+
+
+def _leer(info: Informacion) -> InformacionCargada:
     return InformacionCargada(informacion_id=info.id, titulo=info.titulo, contenido=info.contenido,
-                              tipo=info.tipo.value, estado=info.estado.value, fecha_fin=info.fecha_fin)
+                              tipo=info.tipo.value, estado=info.estado.value, fecha_inicio=info.fecha_inicio,
+                              fecha_fin=info.fecha_fin)
 
 
 def _titulo_de(contenido: str) -> str:
@@ -143,10 +164,37 @@ def texto_de_paro(datos: Paro) -> tuple[str, str]:
 @router.post("", response_model=InformacionCargada, status_code=status.HTTP_201_CREATED)
 def cargar_informacion(datos: InformacionManual, db: Session = Depends(get_db), _mod=Depends(require_mod)):
     contenido = datos.contenido.strip()
-    return _cargar(db, datos.tipo, _titulo_de(contenido), contenido, datos.url)
+    return _cargar(db, datos.tipo, _titulo_de(contenido), contenido, datos.url,
+                   sin_vencimiento=datos.sin_vencimiento)
 
 
 @router.post("/paro", response_model=InformacionCargada, status_code=status.HTTP_201_CREATED)
 def cargar_paro(datos: Paro, db: Session = Depends(get_db), _mod=Depends(require_mod)):
     titulo, contenido = texto_de_paro(datos)
-    return _cargar(db, TipoInformacionEnum.AVISO, titulo, contenido, datos.url)
+    return _cargar(db, TipoInformacionEnum.AVISO, titulo, contenido, datos.url, prefijo=PREFIJO_PARO)
+
+
+@router.get("/avisos", response_model=list[InformacionCargada])
+def avisos_vigentes(db: Session = Depends(get_db), _usuario=Depends(get_current_user)):
+    """Paros de hoy en adelante: el chat los muestra arriba, sin que nadie pregunte."""
+    return [_leer(p) for p in paros(db, hoy_argentina())]
+
+
+@router.delete("/{informacion_id}", status_code=status.HTTP_204_NO_CONTENT)
+def dar_de_baja(informacion_id: int, db: Session = Depends(get_db), _mod=Depends(require_mod)):
+    """Solo lo cargado por moderadores: queda en el historial pero el chat deja de usarlo."""
+    info = (
+        db.query(Informacion)
+        .join(Evidencia, Evidencia.informacion_id == Informacion.id)
+        .join(Fuente, Fuente.id == Evidencia.fuente_id)
+        .filter(Informacion.id == informacion_id, Fuente.nombre == FUENTE_MODERADORES)
+        .first()
+    )
+    if not info:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No se encontró información cargada por moderadores con ese id")
+    info.estado = E.REEMPLAZADA  # la búsqueda excluye REEMPLAZADA
+    db.add(Verificacion(informacion_id=info.id, resultado=E.REEMPLAZADA, puntuacion=info.confianza,
+                        explicacion="Dada de baja por un moderador"))
+    db.query(CacheRespuesta).delete()  # que el chat deje de responderla ya
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

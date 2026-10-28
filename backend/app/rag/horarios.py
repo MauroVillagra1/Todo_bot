@@ -175,8 +175,12 @@ def mas_recientes(filas: list[tuple]) -> list[tuple]:
 
 
 def _materias_de(db: Session, pregunta: str) -> list[str]:
+    return materias_que_coinciden({m for (m,) in db.query(HorarioClase.materia_norm).distinct()}, pregunta)
+
+
+def materias_que_coinciden(catalogo: set[str], pregunta: str) -> list[str]:
+    """Materias (normalizadas) del catálogo que nombra la pregunta. También lo usan las mesas."""
     preg = _tokens(pregunta)
-    catalogo = {m for (m,) in db.query(HorarioClase.materia_norm).distinct()}
     puntajes = {m: _puntaje(preg, m) for m in catalogo}
     mejor = max(puntajes.values(), default=0)
     if mejor < 0.6:
@@ -267,6 +271,13 @@ def _aclaracion(db: Session, grupos: list[list[str]]) -> dict:
     return {"respuesta": "\n".join(lineas), "estado": "ACLARACION", "fuentes": [], "fecha_informacion": None}
 
 
+def comision_de(h: HorarioClase, d: Documento | None) -> str:
+    """Los PDFs del Anexo Concepción no traen comisión."""
+    if h.comision:
+        return h.comision
+    return "Anexo Concepción" if d is not None and "anexo" in (d.nombre or "").lower() else "Sin comisión"
+
+
 def cuatrimestre_terminado(hoy: date | None = None) -> str:
     """El cuatrimestre que no está en curso: de agosto a diciembre ya pasó el primero."""
     hoy = hoy or date.today()
@@ -295,6 +306,10 @@ def responder_horario(db: Session, pregunta: str, anterior: str = "", hoy: date 
         materias = _materias_de(db, anterior)
         f["es_horario"] = f["es_horario"] or previo["es_horario"]
 
+    # "¿Cuáles son las materias de 5º año?": lista de materias del año, no la grilla entera
+    if (f["anio"] and not (materias or docentes or f["comisiones"] or f["electivas"])
+            and set(re.findall(r"[a-z]+", normalizar(pregunta))) & _PIDE_MATERIAS):
+        return materias_del_anio(db, f)
     if not (f["comisiones"] or materias or docentes or (f["electivas"] and (f["anio"] or f["turno"]))):
         return None
     if not f["es_horario"] and not f["comisiones"] and not _materia_exacta(pregunta, materias):
@@ -339,8 +354,6 @@ def responder_horario(db: Session, pregunta: str, anterior: str = "", hoy: date 
         return None
 
     filas = mas_recientes(filas)
-    fecha = _fecha
-
     # Si una comisión figura en dos planes (2008 y 2023), se muestra el más nuevo,
     # salvo que se pida un plan. Si la materia solo existe en el plan viejo, queda.
     planes_omitidos = set()
@@ -353,15 +366,10 @@ def responder_horario(db: Session, pregunta: str, anterior: str = "", hoy: date 
 
     # Agrupar por comisión (y plan/período), ordenado por día y hora
     grupos: dict[tuple, list[HorarioClase]] = defaultdict(list)
-    for h, _ in filas:
-        grupos[(h.plan or "", h.comision or "", h.periodo or "", h.turno or "", h.aula or "")].append(h)
+    for h, d in filas:
+        grupos[(h.plan or "", comision_de(h, d), h.periodo or "", h.turno or "", h.aula or "")].append(h)
 
-    docs = sorted({d.id: d for _, d in filas if d is not None}.values(), key=lambda d: d.id)
-    numero: dict[int | None, int] = {d.id: i for i, d in enumerate(docs, 1)}
-    hay_manuales = any(d is None for _, d in filas)
-    if hay_manuales:
-        numero[None] = len(docs) + 1  # bloques cargados a mano en el panel
-    doc_de = {h.id: (d.id if d else None) for h, d in filas}
+    numero, doc_de, fuentes = _citas(db, filas)
 
     # Una materia puede venir escrita distinto ("Analisis Matematico I" / "Análisis Matemático I"):
     # se agrupa por su forma normalizada y se muestra la grafía más común (con tildes si empata)
@@ -389,7 +397,7 @@ def responder_horario(db: Session, pregunta: str, anterior: str = "", hoy: date 
         datos = ", ".join(x for x in (f"Plan {plan}" if plan else "", periodo, f"turno {turno.lower()}" if turno else "",
                                       f"aula {aula}" if aula else "") if x)
         cita = " ".join(f"[{n}]" for n in sorted({numero[doc_de[b.id]] for b in bloques}))
-        lineas.append(f"**{comision or 'Sin comisión'}** ({datos}) {cita}")
+        lineas.append(f"**{comision}** ({datos}) {cita}")
         for b in sorted(bloques, key=lambda b: (b.dia, b.inicio)):
             extra = "".join(x for x in (f" (electiva)" if b.electiva else "",
                                         f" — {_docentes_texto(b.docente)}" if _docentes_texto(b.docente) else "", f" — {b.lugar}" if b.lugar else ""))
@@ -402,6 +410,28 @@ def responder_horario(db: Session, pregunta: str, anterior: str = "", hoy: date 
     if planes_omitidos:
         viejos = ", ".join(sorted(p for p in planes_omitidos if p))
         lineas.append(f"_Se muestra el plan más reciente. Si cursás el plan {viejos}, preguntá indicando “plan {viejos}”._")
+
+    return _salida(lineas, fuentes)
+
+
+def _salida(lineas: list[str], fuentes: list[dict]) -> dict:
+    fechas = [x["fecha"] for x in fuentes if x["fecha"]]
+    return {
+        "respuesta": "\n".join(lineas).strip(),
+        "estado": "CONFIRMADA" if all(x["estado"] == "CONFIRMADA" for x in fuentes) else "PROBABLE",
+        "fuentes": fuentes,
+        "fecha_informacion": max(fechas) if fechas else None,
+    }
+
+
+def _citas(db: Session, filas: list[tuple]) -> tuple[dict, dict, list[dict]]:
+    """Número de cita de cada PDF (y de lo cargado a mano), y la lista de fuentes."""
+    docs = sorted({d.id: d for _, d in filas if d is not None}.values(), key=lambda d: d.id)
+    numero: dict[int | None, int] = {d.id: i for i, d in enumerate(docs, 1)}
+    hay_manuales = any(d is None for _, d in filas)
+    if hay_manuales:
+        numero[None] = len(docs) + 1  # bloques cargados a mano en el panel
+    doc_de = {h.id: (d.id if d else None) for h, d in filas}
 
     fuentes_nombre = dict(db.query(Fuente.id, Fuente.nombre).all())
     estados = dict(
@@ -416,7 +446,7 @@ def responder_horario(db: Session, pregunta: str, anterior: str = "", hoy: date 
             "titulo": d.nombre or d.url.rsplit("/", 1)[-1],
             "url": d.url,
             "fuente": fuentes_nombre.get(d.fuente_id, ""),
-            "fecha": fecha(d).date().isoformat() if fecha(d) else None,
+            "fecha": _fecha(d).date().isoformat() if _fecha(d) else None,
             "estado": estados[d.id].value if d.id in estados else "CONFIRMADA",
         }
         for d in docs
@@ -426,10 +456,71 @@ def responder_horario(db: Session, pregunta: str, anterior: str = "", hoy: date 
             "numero": numero[None], "titulo": "Horarios cargados por la administración", "url": get_settings().SITE_URL,
             "fuente": "UTNIA", "fecha": None, "estado": "CONFIRMADA",
         })
-    fechas = [x["fecha"] for x in fuentes if x["fecha"]]
-    return {
-        "respuesta": "\n".join(lineas).strip(),
-        "estado": "CONFIRMADA" if all(x["estado"] == "CONFIRMADA" for x in fuentes) else "PROBABLE",
-        "fuentes": fuentes,
-        "fecha_informacion": max(fechas) if fechas else None,
-    }
+    return numero, doc_de, fuentes
+
+
+_PIDE_MATERIAS = {"materia", "materias", "asignatura", "asignaturas"}
+
+
+def _periodo_texto(periodos: set) -> str:
+    if "Anual" in periodos:
+        return "anual"
+    cuatris = sorted(p for p in periodos if p)
+    if len(cuatris) == 2:
+        return "1º y 2º cuatrimestre"
+    return {"Primer cuatrimestre": "1º cuatrimestre", "Segundo cuatrimestre": "2º cuatrimestre"}.get(
+        cuatris[0] if cuatris else "", "")
+
+
+def materias_del_anio(db: Session, f: dict) -> dict | None:
+    """'¿Cuáles son las materias de 5º año?': lista de materias (no la grilla), del plan más nuevo."""
+    filas = vigentes(db).filter(HorarioClase.anio == f["anio"]).all()
+    if f["periodo"]:
+        filas = [(h, d) for h, d in filas if h.periodo in (f["periodo"], "Anual", None)]
+    if f["turno"]:
+        filas = [(h, d) for h, d in filas if h.turno and f["turno"] in h.turno.lower()]
+    filas = mas_recientes(filas)
+    if not filas:
+        return None
+    planes = sorted({h.plan or "" for h, _ in filas})
+    plan = f["plan"] if f["plan"] in planes else planes[-1]
+    otros = [p for p in planes if p and p != plan]
+    filas = [(h, d) for h, d in filas if (h.plan or "") == plan]
+
+    datos: dict[str, dict] = {}
+    for h, d in filas:
+        m = datos.setdefault(h.materia_norm, {"grafias": defaultdict(int), "comisiones": set(),
+                                             "periodos": set(), "electiva": False})
+        m["grafias"][h.materia] += 1
+        m["comisiones"].add(comision_de(h, d))
+        m["periodos"].add(h.periodo)
+        m["electiva"] |= h.electiva
+
+    def nombre(m: dict) -> str:
+        return bonito(max(m["grafias"], key=lambda g: (m["grafias"][g], sum(not c.isascii() for c in g))))
+
+    _, _, fuentes = _citas(db, filas)
+    citas = " ".join(f"[{x['numero']}]" for x in fuentes)
+    titulo = f"Materias de **{f['anio']}º año**" + (f" (Plan {plan})" if plan else "")
+    if f["turno"]:
+        titulo += f", turno {f['turno']}"
+    if f["periodo"]:
+        titulo += f", {f['periodo'].lower()}"
+    lineas = [f"{titulo}, según los horarios publicados por el Departamento de Sistemas {citas}:", ""]
+    for etiqueta, electivas in (("Obligatorias", False), ("Electivas", True)):
+        grupo = sorted((m for m in datos.values() if m["electiva"] == electivas), key=nombre)
+        if not grupo:
+            continue
+        lineas.append(f"**{etiqueta}**")
+        for m in grupo:
+            periodo = _periodo_texto(m["periodos"])
+            lineas.append(f"- {nombre(m)}" + (f" — {periodo}" if periodo else "")
+                          + f" · {', '.join(sorted(m['comisiones']))}")
+        lineas.append("")
+    if otros:
+        lineas.append(f"_También hay horarios del plan {', '.join(otros)} para este año: "
+                      f"preguntá indicando “plan {otros[0]}”._")
+    ejemplo = next(iter(sorted(c for m in datos.values() for c in m["comisiones"] if c[:1].isdigit())),
+                   f"{f['anio']}K01")
+    lineas.append(f"_Para ver días y horas, preguntá por una materia o una comisión (ej. “¿qué tiene la {ejemplo}?”)._")
+    return _salida(lineas, fuentes)

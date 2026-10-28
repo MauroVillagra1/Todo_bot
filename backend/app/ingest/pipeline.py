@@ -5,6 +5,7 @@ Clasificación (etapa 5) y embeddings (etapa 7) se suman después.
 Garantía clave: re-ejecutar sin cambios en la fuente no crea nada nuevo,
 no llama al LLM y no genera embeddings.
 """
+import re
 from datetime import timedelta, timezone
 
 from sqlalchemy import func
@@ -86,9 +87,14 @@ def leer_pdf(contenido: bytes) -> list[str]:
     return extraer_pdf(contenido)[0]
 
 
-def guardar_grillas(db: Session, documento_id: int, grillas: list[Grilla]) -> None:
+_RE_ANIO_EN_NOMBRE = re.compile(r"(\d)\s*[°º]?\s*A[ÑN]O", re.IGNORECASE)
+
+
+def guardar_grillas(db: Session, documento_id: int, grillas: list[Grilla], nombre: str = "") -> None:
     """Reemplaza los bloques de clase del documento (para responder horarios con SQL)."""
     db.query(HorarioClase).filter(HorarioClase.documento_id == documento_id).delete()
+    # Los PDFs del Anexo Concepción no traen comisión: el año está en el nombre ("ANEXO 3 AÑO")
+    anio_del_nombre = int(m.group(1)) if (m := _RE_ANIO_EN_NOMBRE.search(nombre or "")) else None
     for g in grillas:
         for b in g.bloques:
             limpio = limpiar_materia(b.materia, b.docente) if b.materia else None
@@ -96,7 +102,7 @@ def guardar_grillas(db: Session, documento_id: int, grillas: list[Grilla]) -> No
                 continue
             materia, docente = limpio
             db.add(HorarioClase(
-                documento_id=documento_id, comision=g.comision, anio=g.anio, plan=g.plan,
+                documento_id=documento_id, comision=g.comision, anio=g.anio or anio_del_nombre, plan=g.plan,
                 turno=g.turno, periodo=g.periodo, aula=g.aula, dia=b.dia, inicio=b.inicio, fin=b.fin,
                 materia=materia[:200], materia_norm=normalizar_materia(materia)[:200],
                 docente=docente, lugar=b.lugar[:60] or None, electiva=b.electiva,
@@ -133,7 +139,7 @@ def guardar_documento(db: Session, fuente: Fuente, doc: DocumentoCrudo) -> str:
     db.flush()
     for orden, trozo in enumerate(chunks_de_paginas(doc.nombre, paginas)):
         db.add(Chunk(documento_id=documento.id, orden=orden, texto=trozo, hash=hash_texto(trozo)))
-    guardar_grillas(db, documento.id, grillas)
+    guardar_grillas(db, documento.id, grillas, doc.nombre)
     return ACTUALIZADO if anteriores else NUEVO
 
 
