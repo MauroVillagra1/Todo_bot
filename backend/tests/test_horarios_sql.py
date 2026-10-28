@@ -251,8 +251,8 @@ def test_analisis_matematico_sin_numero_en_el_pdf_es_la_primera():
 
 
 @pytest.mark.parametrize("mensaje,contiene", [
-    ("Hola", "Soy UTNIA"),
-    ("buenas tardes!", "Soy UTNIA"),
+    ("Hola", "Soy Juliette"),
+    ("buenas tardes!", "Soy Juliette"),
     ("¿Qué podés hacer?", "fuentes institucionales"),
     ("gracias!!", "De nada"),
     ("chau", "Hasta luego"),

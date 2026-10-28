@@ -43,7 +43,7 @@ export default function Sugerir() {
       <div className="bg-[#0d0d10] border-b border-[#1e1e22] px-6 py-4">
         <h2 className="font-display text-base font-semibold">Sugerir un dato</h2>
         <p className="text-xs text-[#8b8b93] mt-0.5">
-          ¿Sabés algo que UTNIA no sabe? Un cambio de aula, una fecha, un trámite… Contalo y, si un moderador lo aprueba, el chat lo va a usar.
+          ¿Sabés algo que Juliette no sabe? Un cambio de aula, una fecha, un trámite… Contalo y, si un moderador lo aprueba, el chat lo va a usar.
         </p>
       </div>
       <div className="flex-1 overflow-y-auto p-6">

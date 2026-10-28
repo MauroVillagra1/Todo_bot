@@ -5,10 +5,12 @@
  *   Al abrir: si hay un refresh token guardado se renueva la sesión (no hay que loguearse de nuevo)
  *   Sin sesión → Login
  *   Con sesión → Chat (el sidebar de Chat maneja la navegación Chat/Panel)
+ *   Cualquier otra dirección → 404 (Juliette enojada), con o sin sesión
  */
 import { useEffect, useState } from 'react'
 import Login from './components/Login'
 import Chat  from './components/Chat'
+import NoEncontrada from './components/NoEncontrada'
 import { alVencer, borrarSesion, cerrarSesion, guardarSesion, renovarSesion } from './api'
 
 export default function App() {
@@ -32,6 +34,9 @@ export default function App() {
     setUsuario(null)
   }
 
+  if (!['/', '/index.html'].includes(window.location.pathname)) {
+    return <NoEncontrada />
+  }
   if (iniciando) {
     return <div className="min-h-screen bg-[#0a0a0c]" />
   }

@@ -39,7 +39,7 @@ MAX_TOKENS_RESPUESTA = 500
 SIN_EVIDENCIA = "No encontré información institucional sobre eso."
 SIN_LLM = "No pude generar la respuesta en este momento. Estas publicaciones pueden servirte:"
 
-SISTEMA = f"""Sos UTNIA, asistente informativo de la UTN Facultad Regional Tucumán.
+SISTEMA = f"""Sos Juliette, asistente informativa de la UTN Facultad Regional Tucumán.
 Reglas:
 - Respondé SOLO con la información del CONTEXTO. No inventes fechas, lugares, links, resoluciones ni fuentes.
 - Citá cada dato con el número de su fuente entre corchetes, por ejemplo [1].

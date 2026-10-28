@@ -1,5 +1,5 @@
 /**
- * Chat — pantalla principal del asistente UTNIA.
+ * Chat — pantalla principal de Juliette, la asistente de la UTN FRT.
  * Sidebar: Chat, Calendario, Documentos y Sugerir dato (todos), Panel (staff y admin) y el
  * historial de conversaciones del usuario. Arriba del chat, un aviso por cada paro vigente.
  */
@@ -13,6 +13,7 @@ import {
 } from '../api'
 import Calendario from './Calendario'
 import Documentos from './Documentos'
+import Juliette from './Juliette'
 import MensajeBurbuja from './MensajeBurbuja'
 import Panel from './Panel'
 import Sugerir from './Sugerir'
@@ -58,22 +59,6 @@ function AvisoParo({ aviso, onCerrar }) {
       </div>
       <button onClick={onCerrar} aria-label="Cerrar aviso" className="opacity-70 hover:opacity-100"><X size={14} /></button>
     </div>
-  )
-}
-
-// ── Logo UTNIA ────────────────────────────────────────────────────────────────
-const LOGO_URL = 'https://res.cloudinary.com/dol1ba0ld/image/upload/v1787954474/asd/Preguntale_a_UTNIA_xwocbf.png'
-
-function LogoUTNIA({ size = 36 }) {
-  return (
-    <img
-      src={LOGO_URL}
-      alt="UTNIA"
-      width={size}
-      height={size}
-      className="rounded-full flex-shrink-0 object-cover"
-      style={{ width: size, height: size }}
-    />
   )
 }
 
@@ -141,7 +126,7 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
         {
           id: Date.now() + 1, tipo: 'asistente', texto: data.respuesta, timestamp: ahora(),
           estado: data.estado, fuentes: data.fuentes ?? [], fecha: data.fecha_informacion,
-          mensajeId: data.mensaje_id,
+          mensajeId: data.mensaje_id, animar: true,
         },
       ])
     } catch (err) {
@@ -171,8 +156,14 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
       {
         id: Date.now(), tipo: 'asistente', texto: alt.respuesta, timestamp: ahora(), alternativa: true,
         estado: alt.estado, fuentes: alt.fuentes ?? [], fecha: alt.fecha_informacion, mensajeId: alt.mensaje_id,
+        animar: true,
       },
     ])
+  }
+
+  /** Ya se escribió: al volver al chat no se repite la animación. */
+  function terminoDeEscribir(id) {
+    setMensajes(prev => prev.map(m => (m.id === id ? { ...m, animar: false } : m)))
   }
 
   function handleKeyDown(e) {
@@ -211,9 +202,9 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
 
         {/* Logo + nombre */}
         <div className="flex items-center gap-2.5 px-3 mb-6">
-          <LogoUTNIA size={34} />
+          <Juliette size={34} titulo="Juliette" />
           <span className="hidden md:block font-display font-semibold text-[15px] tracking-tight text-[#f4f4f5]">
-            UTNIA
+            Juliette
           </span>
         </div>
 
@@ -345,9 +336,9 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
             {!hayConversacion ? (
               /* Pantalla de bienvenida */
               <div className="h-full flex flex-col items-center justify-center text-center px-4">
-                <LogoUTNIA size={56} />
-                <h1 className="font-display text-2xl md:text-3xl font-semibold mt-6 mb-2 tracking-tight">
-                  Preguntale a UTNIA
+                <Juliette size={130} mirar titulo="Juliette te saluda" />
+                <h1 className="font-display text-2xl md:text-3xl font-semibold mt-4 mb-2 tracking-tight">
+                  Preguntale a Juliette
                 </h1>
                 <p className="font-body text-sm text-[#8b8b93] mb-8">
                   ¡Hola, {usuario.nombre.split(' ')[0]}! Podés preguntarme sobre horarios, mesas de examen, el calendario y trámites.
@@ -370,21 +361,15 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
               /* Historial */
               <div className="max-w-2xl mx-auto py-6 space-y-1">
                 {mensajes.map(msg => (
-                  <MensajeBurbuja key={msg.id} mensaje={msg} logoComponent={<LogoUTNIA size={26} />}
-                                  onAlternativa={agregarAlternativa} />
+                  <MensajeBurbuja key={msg.id} mensaje={msg} onAlternativa={agregarAlternativa}
+                                  onAnimado={terminoDeEscribir} />
                 ))}
 
-                {/* Indicador escribiendo */}
+                {/* Mientras busca la respuesta: Juliette pensando */}
                 {escribiendo && (
-                  <div className="msg-in flex justify-start mb-4">
-                    <div className="mr-2.5 mt-0.5 flex-shrink-0"><LogoUTNIA size={26} /></div>
-                    <div className="bg-[#17171b] border border-[#232327] rounded-2xl rounded-bl-sm px-4 py-3">
-                      <div className="flex gap-1 items-center h-4">
-                        <span className="w-1.5 h-1.5 bg-[#6b6b73] rounded-full dot-bounce [animation-delay:-0.3s]" />
-                        <span className="w-1.5 h-1.5 bg-[#6b6b73] rounded-full dot-bounce [animation-delay:-0.15s]" />
-                        <span className="w-1.5 h-1.5 bg-[#6b6b73] rounded-full dot-bounce" />
-                      </div>
-                    </div>
+                  <div className="msg-in flex items-end justify-start mb-4">
+                    <div className="mr-2 flex-shrink-0"><Juliette estado="think" size={44} /></div>
+                    <span className="font-body text-xs text-[#8b8b93] mb-2">Juliette está pensando…</span>
                   </div>
                 )}
                 <div ref={bottomRef} />

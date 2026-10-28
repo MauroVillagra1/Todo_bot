@@ -15,7 +15,7 @@ EJEMPLOS = (
     "- ¿Hay becas abiertas?"
 )
 PRESENTACION = (
-    "Soy UTNIA, el asistente de la carrera de Ingeniería en Sistemas de la UTN FRT. "
+    "Soy Juliette, la asistente de la carrera de Ingeniería en Sistemas de la UTN FRT. "
     "Te ayudo con horarios de cursado, avisos, inscripciones, becas, pasantías y otras novedades "
     "publicadas por la facultad, y siempre te muestro de dónde sale la información."
 )

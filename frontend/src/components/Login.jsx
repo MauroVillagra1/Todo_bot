@@ -196,7 +196,7 @@ export default function Login({ onLogin }) {
         <div className="flex flex-col items-center mb-8">
           <LogoUTNIA size={52} />
           <h1 className="font-display text-2xl font-semibold text-[#f4f4f5] mt-4 tracking-tight">
-            UTNIA
+            Juliette
           </h1>
           <p className="font-body text-sm text-[#8b8b93] mt-1">{SUBTITULOS[pantalla]}</p>
         </div>

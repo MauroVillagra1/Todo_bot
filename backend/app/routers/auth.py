@@ -167,8 +167,8 @@ def _enviar_codigo(db: Session, email: str, proposito: P, datos: dict) -> None:
     accion = "crear tu cuenta" if proposito == P.REGISTRO else "cambiar tu contraseña"
     try:
         enviar_email(
-            email, f"UTNIA: tu código es {codigo}",
-            f"Tu código para {accion} en UTNIA es: {codigo}\n\n"
+            email, f"Juliette (UTN FRT): tu código es {codigo}",
+            f"Tu código para {accion} en Juliette es: {codigo}\n\n"
             f"Vence en {VIGENCIA_CODIGO.seconds // 60} minutos. Si no lo pediste, ignorá este mail.",
         )
     except EmailNoConfigurado:

@@ -454,7 +454,7 @@ def _citas(db: Session, filas: list[tuple]) -> tuple[dict, dict, list[dict]]:
     if hay_manuales:
         fuentes.append({
             "numero": numero[None], "titulo": "Horarios cargados por la administración", "url": get_settings().SITE_URL,
-            "fuente": "UTNIA", "fecha": None, "estado": "CONFIRMADA",
+            "fuente": "Juliette", "fecha": None, "estado": "CONFIRMADA",
         })
     return numero, doc_de, fuentes
 

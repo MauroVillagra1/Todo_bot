@@ -135,7 +135,7 @@ def indexar(db: Session, doc: DocumentoImportante, url: str) -> None:
         contenido += f"Fecha del documento: {doc.fecha_documento:%d/%m/%Y}.\n"
     if doc.desactualizado:
         contenido += "ATENCIÓN: este documento está marcado como desactualizado; consultá en la facultad si sigue vigente.\n"
-    contenido += f"Se descarga desde la sección Documentos de UTNIA (menú) o desde este enlace: {url}"
+    contenido += f"Se descarga desde la sección Documentos del chat (menú) o desde este enlace: {url}"
     if texto:
         contenido += f"\n\nContenido del documento:\n{texto[:MAX_TEXTO_INDEXADO]}"
     ahora = datetime.now(timezone.utc)

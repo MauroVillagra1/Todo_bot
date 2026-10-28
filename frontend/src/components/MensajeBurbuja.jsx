@@ -5,14 +5,22 @@
  * Props:
  *   mensaje:        { id, texto, tipo: 'usuario'|'asistente'|'error', timestamp,
  *                     estado?, fuentes?: [{numero, titulo, url, fuente, fecha}], fecha? }
- *   logoComponent:  ReactNode — avatar del asistente (LogoUTNIA)
+ *                   animar?: true → la respuesta se escribe de a poco (Juliette "habla")
  *   onAlternativa:  (respuesta) => void — "no me sirvió" devolvió otra respuesta
+ *   onAnimado:      (id) => void — terminó de escribirse (para no repetirlo al volver al chat)
+ *
+ * Juliette acompaña cada respuesta: habla mientras se escribe, se pone feliz con 👍, triste con 👎
+ * y suspira si algo falló o no encontró la información.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { ThumbsDown, ThumbsUp } from 'lucide-react'
 import { votarRespuesta } from '../api'
+import Juliette from './Juliette'
+
+const SIN_RESPUESTA = /^(No encontré información|No pude generar la respuesta)/
+const MS_POR_PASO = 18
 
 // Estado de confianza de la respuesta (RAG-03)
 const ESTADOS = {
@@ -65,7 +73,7 @@ function DetalleRespuesta({ mensaje }) {
  *   "No me sirvió"  → el chat busca en otras fuentes (onAlternativa recibe la respuesta nueva)
  *   "Dato incorrecto" → queda para que un moderador lo revise
  */
-function Votacion({ mensajeId, onAlternativa }) {
+function Votacion({ mensajeId, onAlternativa, onVoto }) {
   const [voto, setVoto] = useState(null)       // 1 | -1
   const [eligiendo, setEligiendo] = useState(false)
   const [reportando, setReportando] = useState(false)
@@ -79,6 +87,7 @@ function Votacion({ mensajeId, onAlternativa }) {
     try {
       const r = await votarRespuesta(mensajeId, valor, motivo, texto)
       setVoto(valor)
+      onVoto?.(valor)
       setEligiendo(false)
       setReportando(false)
       if (motivo === 'INCORRECTO') setAviso('Gracias: un moderador lo va a revisar.')
@@ -132,18 +141,44 @@ function Votacion({ mensajeId, onAlternativa }) {
   )
 }
 
-export default function MensajeBurbuja({ mensaje, logoComponent, onAlternativa }) {
+/** Escribe el texto de a poco (unos 2-3 segundos como máximo). Devuelve [texto visible, terminó]. */
+function useEscritura(texto, animar, onFin) {
+  const [n, setN] = useState(animar ? 0 : texto.length)
+  useEffect(() => {
+    if (!animar) return
+    const paso = Math.max(2, Math.ceil(texto.length / 140))
+    const timer = setInterval(() => {
+      setN(prev => {
+        const sig = Math.min(texto.length, prev + paso)
+        if (sig >= texto.length) { clearInterval(timer); setTimeout(() => onFin?.(), 0) }
+        return sig
+      })
+    }, MS_POR_PASO)
+    return () => clearInterval(timer)
+  }, [animar, texto]) // eslint-disable-line react-hooks/exhaustive-deps
+  return [texto.slice(0, n), n >= texto.length]
+}
+
+export default function MensajeBurbuja({ mensaje, onAlternativa, onAnimado }) {
   const esUsuario  = mensaje.tipo === 'usuario'
   const esError    = mensaje.tipo === 'error'
   const esAsistente = mensaje.tipo === 'asistente'
+  const [voto, setVoto] = useState(null)
+  const [texto, escrito] = useEscritura(mensaje.texto, !!mensaje.animar && !esUsuario, () => onAnimado?.(mensaje.id))
+
+  const animo = !escrito ? 'talk'
+    : voto === 1 ? 'happy'
+    : voto === -1 ? 'sad'
+    : esError || SIN_RESPUESTA.test(mensaje.texto) ? 'sigh'
+    : 'neutral'
 
   return (
     <div className={`msg-in flex w-full mb-4 ${esUsuario ? 'justify-end' : 'justify-start'}`}>
 
-      {/* Avatar asistente */}
+      {/* Juliette */}
       {!esUsuario && (
-        <div className="mr-2.5 mt-0.5 flex-shrink-0">
-          {logoComponent}
+        <div className="mr-2 -mt-2 flex-shrink-0">
+          <Juliette estado={animo} size={44} />
         </div>
       )}
 
@@ -160,7 +195,7 @@ export default function MensajeBurbuja({ mensaje, logoComponent, onAlternativa }
           `}
         >
           {esUsuario ? (
-            <span className="whitespace-pre-wrap">{mensaje.texto}</span>
+            <span className="whitespace-pre-wrap">{texto}</span>
           ) : (
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
@@ -193,18 +228,18 @@ export default function MensajeBurbuja({ mensaje, logoComponent, onAlternativa }
                 ),
               }}
             >
-              {mensaje.texto}
+              {texto}
             </ReactMarkdown>
           )}
-          {esAsistente && <DetalleRespuesta mensaje={mensaje} />}
+          {esAsistente && escrito && <DetalleRespuesta mensaje={mensaje} />}
         </div>
 
         {/* Timestamp */}
         <span className={`text-[10px] mt-1 px-1 ${esUsuario ? 'text-white/40' : 'text-[#6b6b73]'}`}>
           {mensaje.alternativa && 'Busqué en otras fuentes · '}{mensaje.timestamp}
         </span>
-        {esAsistente && mensaje.mensajeId && (
-          <Votacion mensajeId={mensaje.mensajeId} onAlternativa={onAlternativa} />
+        {esAsistente && escrito && mensaje.mensajeId && (
+          <Votacion mensajeId={mensaje.mensajeId} onAlternativa={onAlternativa} onVoto={setVoto} />
         )}
       </div>
 
