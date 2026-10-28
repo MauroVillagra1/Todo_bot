@@ -28,7 +28,7 @@ REGLAS: dict[T, list[str]] = {
                "conferencia", "encuentro", "hackathon", "torneo", "competencia", "webinar",
                "capacitacion", "visita", "conaiisi", "feria"],
     T.AVISO: ["atencion estudiantes", "informacion importante", "aviso", "comunicado",
-              "se informa", "suspension", "suspende", "se suspenden"],
+              "se informa", "suspension", "suspende", "se suspenden", "paro", "medida de fuerza"],
     T.NOTICIA: ["entrevista", "historias que inspiran", "egresado", "egresada", "premio",
                 "reconocimiento", "acreditacion", "felicitamos"],
 }

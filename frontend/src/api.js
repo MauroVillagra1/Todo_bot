@@ -142,6 +142,18 @@ export async function listarFuentes() {
 }
 
 /** Carga a mano un posteo autorizado de Instagram o de un canal de WhatsApp. */
+/** Dato cargado por un MOD: { tipo, contenido, url? }. Queda CONFIRMADO y buscable en el chat. */
+export async function cargarInformacion(payload) {
+  const { data } = await api.post('/api/v1/informacion', payload)
+  return data  // { informacion_id, titulo, contenido, tipo, estado, fecha_fin }
+}
+
+/** Aviso de paro: { tipo: DOCENTE | NO_DOCENTE | AMBOS, fecha, dias, url?, detalle? }. */
+export async function cargarParo(payload) {
+  const { data } = await api.post('/api/v1/informacion/paro', payload)
+  return data
+}
+
 export async function cargarPublicacionManual(fuenteId, payload) {
   const { data } = await api.post(`/api/v1/fuentes/${fuenteId}/publicaciones`, payload)
   return data  // { resultado, publicacion_id, informacion_id, estado, tipo }

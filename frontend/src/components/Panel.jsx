@@ -1,6 +1,7 @@
 /**
  * Panel — MOD y ADMIN.
  *   Resumen   → estado del sistema y métricas (ADM-01, OBS-01)
+ *   Cargar    → avisos de paro (abierta/cerrada según el tipo) e información con tipo, texto y link opcional
  *   Fuentes   → carga manual de publicaciones; ADMIN además activa/desactiva y ajusta confiabilidad
  *   Sugerencias → datos propuestos por usuarios: aceptar (con correcciones) o rechazar con motivo
  *   Reportes  → respuestas votadas como "dato incorrecto": sacar ese dato del chat o descartar
@@ -10,7 +11,7 @@
  */
 import { useEffect, useState } from 'react'
 import {
-  aceptarSugerencia, actualizarFuente, cambiarRol, cargarPublicacionManual, levantarSuspension,
+  aceptarSugerencia, actualizarFuente, cambiarRol, cargarInformacion, cargarParo, cargarPublicacionManual, levantarSuspension,
   listarFuentes, listarReportes, listarSugerencias, listarUsuarios, obtenerResumen, rechazarSugerencia,
   resolverReporte, resumenVotos, suspenderUsuario,
 } from '../api'
@@ -279,6 +280,145 @@ function Fuentes({ esAdmin }) {
           ))}
         </ul>
       </div>
+    </div>
+  )
+}
+
+// ── Cargar (MOD y ADMIN): paros e información directa ─────────────────────────
+
+const TIPOS_PARO = [
+  ['DOCENTE',    'Docente',              'La facultad está abierta'],
+  ['NO_DOCENTE', 'No docente',           'La facultad está cerrada'],
+  ['AMBOS',      'Docente y no docente', 'La facultad está cerrada'],
+]
+const PARO_VACIO = { tipo: '', fecha: hoy(), dias: 1, url: '', detalle: '' }
+
+const TIPOS_INFORMACION = [
+  ['AVISO', 'Aviso'], ['INSCRIPCION', 'Inscripción'], ['EXAMEN', 'Examen'], ['CALENDARIO', 'Calendario / horarios'],
+  ['TRAMITE', 'Trámite'], ['BECA', 'Beca'], ['CONVOCATORIA', 'Convocatoria / empleo'], ['EVENTO', 'Evento'],
+  ['NOTICIA', 'Noticia'], ['OTRO', 'Otro'],
+]
+const INFO_VACIA = { tipo: '', url: '', contenido: '' }
+
+/** Formulario con envío, mensaje de resultado y vista previa de lo que quedó cargado. */
+function useEnvio(enviarFn, limpiar) {
+  const [enviando, setEnviando] = useState(false)
+  const [mensaje, setMensaje] = useState(null)
+  const [cargada, setCargada] = useState(null)
+
+  async function enviar(e, payload) {
+    e.preventDefault()
+    setEnviando(true)
+    setMensaje(null)
+    try {
+      const r = await enviarFn(payload)
+      setCargada(r)
+      setMensaje({ ok: true, texto: `Cargado · ${r.estado} · ya lo puede responder el chat` })
+      limpiar()
+    } catch (err) {
+      setMensaje({ ok: false, texto: errorDe(err, 'No se pudo cargar. Revisá los datos.') })
+    } finally {
+      setEnviando(false)
+    }
+  }
+  return { enviando, mensaje, cargada, enviar }
+}
+
+function Resultado({ mensaje, cargada }) {
+  return (
+    <>
+      {mensaje && <p className={`text-xs ${mensaje.ok ? 'text-emerald-400' : 'text-red-400'}`}>{mensaje.texto}</p>}
+      {mensaje?.ok && cargada && (
+        <div className="bg-[#141417] border border-[#232327] rounded-xl p-3 text-xs">
+          <p className="font-medium text-[#f4f4f5]">{cargada.titulo}</p>
+          <p className="text-[#a1a1aa] whitespace-pre-line mt-1">{cargada.contenido}</p>
+        </div>
+      )}
+    </>
+  )
+}
+
+function FormParo() {
+  const [form, setForm] = useState(PARO_VACIO)
+  const cambiar = c => e => setForm(prev => ({ ...prev, [c]: e.target.value }))
+  const { enviando, mensaje, cargada, enviar } = useEnvio(cargarParo, () => setForm(PARO_VACIO))
+  const elegido = TIPOS_PARO.find(([id]) => id === form.tipo)
+
+  function enviarParo(e) {
+    enviar(e, {
+      tipo: form.tipo, fecha: form.fecha, dias: Number(form.dias),
+      url: form.url.trim() || null, detalle: form.detalle.trim() || null,
+    })
+  }
+
+  return (
+    <form onSubmit={enviarParo} className={`${tarjeta} space-y-3`}>
+      <div>
+        <h3 className="text-sm font-semibold text-[#f4f4f5]">Avisar un paro</h3>
+        <p className="text-xs text-[#8b8b93] mt-0.5">El chat va a responder si hay paro y si la facultad está abierta o cerrada.</p>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        {TIPOS_PARO.map(([id, nombre, efecto]) => (
+          <button key={id} type="button" onClick={() => setForm(prev => ({ ...prev, tipo: id }))}
+                  className={`text-left rounded-xl border px-3 py-2 text-sm transition-colors ${form.tipo === id
+                    ? 'border-[#e8592e] bg-[#e8592e]/10 text-[#f4f4f5]' : 'border-[#232327] text-[#a1a1aa] hover:border-[#3a3a40]'}`}>
+            <span className="block font-medium">{nombre}</span>
+            <span className={`block text-xs ${id === 'DOCENTE' ? 'text-emerald-400' : 'text-red-400'}`}>{efecto}</span>
+          </button>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="block text-xs text-[#a1a1aa]">
+          Fecha (primer día)
+          <input required type="date" value={form.fecha} onChange={cambiar('fecha')} className={`${campo} mt-1`} />
+        </label>
+        <label className="block text-xs text-[#a1a1aa]">
+          Cantidad de días
+          <input required type="number" min={1} max={30} value={form.dias} onChange={cambiar('dias')} className={`${campo} mt-1`} />
+        </label>
+      </div>
+      <input type="url" placeholder="Link al comunicado (opcional)" value={form.url} onChange={cambiar('url')} className={campo} />
+      <textarea rows={2} maxLength={2000} placeholder="Aclaraciones (opcional): gremio, si hay mesas de examen, etc."
+                value={form.detalle} onChange={cambiar('detalle')} className={campo} />
+      <div className="flex items-center gap-3">
+        <button type="submit" disabled={enviando || !elegido} className={boton}>{enviando ? 'Cargando…' : 'Avisar paro'}</button>
+        {!elegido && <span className="text-xs text-[#8b8b93]">Elegí el tipo de paro</span>}
+      </div>
+      <Resultado mensaje={mensaje} cargada={cargada} />
+    </form>
+  )
+}
+
+function FormInformacion() {
+  const [form, setForm] = useState(INFO_VACIA)
+  const cambiar = c => e => setForm(prev => ({ ...prev, [c]: e.target.value }))
+  const { enviando, mensaje, cargada, enviar } = useEnvio(cargarInformacion, () => setForm(INFO_VACIA))
+
+  return (
+    <form onSubmit={e => enviar(e, { tipo: form.tipo, contenido: form.contenido, url: form.url.trim() || null })}
+          className={`${tarjeta} space-y-3`}>
+      <div>
+        <h3 className="text-sm font-semibold text-[#f4f4f5]">Cargar información</h3>
+        <p className="text-xs text-[#8b8b93] mt-0.5">La primera línea del texto se usa como título.</p>
+      </div>
+      <select required value={form.tipo} onChange={cambiar('tipo')} className={campo}>
+        <option value="">Tipo de información…</option>
+        {TIPOS_INFORMACION.map(([id, nombre]) => <option key={id} value={id}>{nombre}</option>)}
+      </select>
+      <input type="url" placeholder="Link (opcional)" value={form.url} onChange={cambiar('url')} className={campo} />
+      <textarea required minLength={10} rows={6} placeholder="Información" value={form.contenido}
+                onChange={cambiar('contenido')} className={campo} />
+      <button type="submit" disabled={enviando} className={boton}>{enviando ? 'Cargando…' : 'Cargar'}</button>
+      <Resultado mensaje={mensaje} cargada={cargada} />
+    </form>
+  )
+}
+
+function Cargar() {
+  return (
+    <div className="space-y-6">
+      <FormParo />
+      <FormInformacion />
     </div>
   )
 }
@@ -624,6 +764,7 @@ export default function Panel({ usuario }) {
   const esAdmin = usuario?.rol === 'ADMIN'
   const tabs = [
     { id: 'resumen', label: 'Resumen' },
+    { id: 'cargar', label: 'Cargar' },
     { id: 'fuentes', label: 'Fuentes' },
     { id: 'sugerencias', label: 'Sugerencias' },
     { id: 'reportes', label: 'Reportes' },
@@ -648,6 +789,7 @@ export default function Panel({ usuario }) {
       <div className="flex-1 overflow-y-auto p-6">
         <div className={`${tab === 'horarios' ? 'max-w-6xl' : 'max-w-3xl'} mx-auto`}>
           {tab === 'resumen' && <Resumen />}
+          {tab === 'cargar' && <Cargar />}
           {tab === 'fuentes' && <Fuentes esAdmin={esAdmin} />}
           {tab === 'sugerencias' && <Sugerencias />}
           {tab === 'reportes' && <Reportes />}

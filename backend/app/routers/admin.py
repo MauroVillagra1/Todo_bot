@@ -18,6 +18,7 @@ from app.models.ingesta import Documento, EstadoIngestaEnum, Fuente, Ingesta, Pu
 from app.models.metrica import MetricaDiaria
 from app.models.usuario import Usuario
 from app.services import llm, uso_neon
+from app.services.email import probar_smtp
 
 router = APIRouter(prefix="/admin", tags=["Administración"])
 
@@ -100,6 +101,7 @@ def diagnostico(_admin=Depends(require_admin)):
             for p, m in llm.cadena_de_modelos() if llm._key(p)
         ],
         "whatsapp_configurado": bool(settings.WHATSAPP_APP_SECRET and settings.WHATSAPP_VERIFY_TOKEN),
+        "smtp": probar_smtp(),  # mails de registro y recuperación de contraseña
     }
     try:
         # Prueba mínima (unos pocos tokens de un modelo gratuito)

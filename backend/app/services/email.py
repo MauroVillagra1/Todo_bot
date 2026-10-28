@@ -31,13 +31,34 @@ def enviar_email(destinatario: str, asunto: str, texto: str) -> None:
     msg["Subject"] = asunto
     msg.set_content(texto)
 
+    with _conectar(s) as smtp:
+        smtp.send_message(msg)
+
+
+def _conectar(s) -> smtplib.SMTP:
+    """Abre la conexión (SSL en 465, STARTTLS en el resto) y hace login."""
     contexto = ssl.create_default_context()
     if s.SMTP_PORT == 465:
-        with smtplib.SMTP_SSL(s.SMTP_HOST, s.SMTP_PORT, context=contexto, timeout=20) as smtp:
-            smtp.login(s.SMTP_USUARIO, s.SMTP_PASSWORD)
-            smtp.send_message(msg)
+        smtp = smtplib.SMTP_SSL(s.SMTP_HOST, s.SMTP_PORT, context=contexto, timeout=20)
     else:
-        with smtplib.SMTP(s.SMTP_HOST, s.SMTP_PORT, timeout=20) as smtp:
+        smtp = smtplib.SMTP(s.SMTP_HOST, s.SMTP_PORT, timeout=20)
+    try:
+        if s.SMTP_PORT != 465:
             smtp.starttls(context=contexto)
-            smtp.login(s.SMTP_USUARIO, s.SMTP_PASSWORD)
-            smtp.send_message(msg)
+        smtp.login(s.SMTP_USUARIO, s.SMTP_PASSWORD)
+    except Exception:
+        smtp.close()
+        raise
+    return smtp
+
+
+def probar_smtp() -> str:
+    """Para el diagnóstico del panel: se conecta y hace login sin mandar nada."""
+    s = get_settings()
+    if not (s.SMTP_HOST and s.SMTP_USUARIO and s.SMTP_PASSWORD):
+        return "sin configurar (faltan SMTP_HOST, SMTP_USUARIO o SMTP_PASSWORD)"
+    try:
+        with _conectar(s):
+            return f"ok: {s.SMTP_USUARIO} en {s.SMTP_HOST}:{s.SMTP_PORT}"
+    except Exception as e:
+        return f"error ({type(e).__name__}) con {s.SMTP_USUARIO} en {s.SMTP_HOST}:{s.SMTP_PORT}: {str(e)[:400]}"
