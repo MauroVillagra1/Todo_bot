@@ -62,7 +62,7 @@ def client(db):
 
 @pytest.fixture
 def crear_usuario(db):
-    def _crear(email: str, rol: RolEnum = RolEnum.MIEMBRO) -> Usuario:
+    def _crear(email: str, rol: RolEnum = RolEnum.USUARIO) -> Usuario:
         u = Usuario(nombre="Test", email=email, rol=rol, password_hash=hash_password(PASSWORD))
         db.add(u)
         db.commit()

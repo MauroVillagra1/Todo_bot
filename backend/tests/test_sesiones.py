@@ -23,7 +23,7 @@ def test_la_fabrica_crea_cada_tipo_con_sus_claims(crear_usuario):
     u = crear_usuario(EMAIL)
     access = TokenFactory.validar(TokenFactory.crear("access", u), "access")
     refresh = TokenFactory.validar(TokenFactory.crear("refresh", u), "refresh")
-    assert (access["sub"], access["typ"], access["rol"], access["ver"]) == (str(u.id), "access", "MIEMBRO", 0)
+    assert (access["sub"], access["typ"], access["rol"], access["ver"]) == (str(u.id), "access", "USUARIO", 0)
     assert refresh["typ"] == "refresh" and "rol" not in refresh
     assert refresh["exp"] - refresh["iat"] > access["exp"] - access["iat"]
     assert access["jti"] != TokenFactory.validar(TokenFactory.crear("access", u), "access")["jti"]

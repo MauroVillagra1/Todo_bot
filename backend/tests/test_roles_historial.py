@@ -60,10 +60,10 @@ def test_smod_tiene_panel_limitado(client, usuarios):
 
 
 def test_smod_solo_da_o_quita_mod(client, usuarios):
-    smod, miembro = usuarios[RolEnum.SMOD], usuarios[RolEnum.MIEMBRO]
+    smod, miembro = usuarios[RolEnum.SMOD], usuarios[RolEnum.USUARIO]
     url = f"/api/v1/usuarios/{miembro.id}"
     assert client.patch(url, json={"rol": "MOD"}, headers=auth(smod)).json()["rol"] == "MOD"
-    assert client.patch(url, json={"rol": "MIEMBRO"}, headers=auth(smod)).json()["rol"] == "MIEMBRO"
+    assert client.patch(url, json={"rol": "USUARIO"}, headers=auth(smod)).json()["rol"] == "USUARIO"
     assert client.patch(url, json={"rol": "SMOD"}, headers=auth(smod)).status_code == 403
     otro_smod = usuarios[RolEnum.SMOD]
     assert client.patch(f"/api/v1/usuarios/{otro_smod.id}", json={"rol": "MOD"}, headers=auth(smod)).status_code == 403
@@ -71,7 +71,7 @@ def test_smod_solo_da_o_quita_mod(client, usuarios):
 
 
 def test_admin_da_smod_pero_no_admin(client, usuarios):
-    admin, miembro = usuarios[RolEnum.ADMIN], usuarios[RolEnum.MIEMBRO]
+    admin, miembro = usuarios[RolEnum.ADMIN], usuarios[RolEnum.USUARIO]
     url = f"/api/v1/usuarios/{miembro.id}"
     assert client.patch(url, json={"rol": "SMOD"}, headers=auth(admin)).json()["rol"] == "SMOD"
     assert client.patch(url, json={"rol": "ADMIN"}, headers=auth(admin)).status_code == 422
@@ -143,11 +143,11 @@ def test_deshacer_borrado_recupera_el_evento(client, db, usuarios):
 
 
 def test_deshacer_cambio_de_rol_y_paro(client, db, usuarios):
-    admin, miembro = usuarios[RolEnum.ADMIN], usuarios[RolEnum.MIEMBRO]
+    admin, miembro = usuarios[RolEnum.ADMIN], usuarios[RolEnum.USUARIO]
     client.patch(f"/api/v1/usuarios/{miembro.id}", json={"rol": "SMOD"}, headers=auth(admin))
     assert _deshacer(client, admin, _ultimo(client, admin, tabla="usuarios")["id"]).status_code == 200
     db.expire_all()
-    assert db.get(Usuario, miembro.id).rol == RolEnum.MIEMBRO
+    assert db.get(Usuario, miembro.id).rol == RolEnum.USUARIO
 
     _paro(client, usuarios[RolEnum.SMOD])
     assert len(client.get("/api/v1/informacion/avisos", headers=auth(miembro)).json()) == 1

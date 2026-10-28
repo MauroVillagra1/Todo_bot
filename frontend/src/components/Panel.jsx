@@ -4,7 +4,7 @@
  *   SMOD  → Cargar (+ paros: próximos y pasados, sin dos paros el mismo día), Sugerencias,
  *           Horarios, Mesas, Calendario y Usuarios (solo dar o quitar MOD). Los documentos se
  *           suben, editan y borran desde la sección Documentos del menú.
- *   ADMIN → todo lo anterior + Resumen, Reportes, Usuarios (rangos MIEMBRO/MOD/SMOD y suspensiones),
+ *   ADMIN → todo lo anterior + Resumen, Reportes, Usuarios (rangos USUARIO/MOD/SMOD y suspensiones),
  *           Historial (cambios filtrables por usuario, sección y fecha; se pueden deshacer) e
  *           Importar (sube un archivo, la IA lo interpreta y se carga en la base tras revisarlo)
  * La UI solo oculta lo que no corresponde: los permisos reales se validan en el backend.
@@ -560,8 +560,8 @@ function Reportes() {
 // ── Usuarios (SMOD: dar o quitar MOD; ADMIN: rangos y suspensiones) ───────────
 
 const DURACIONES = [['1', '1 día'], ['3', '3 días'], ['7', '7 días'], ['30', '30 días'], ['', 'Permanente']]
-const ROLES = { ADMIN: 'Admin', SMOD: 'Super mod', MOD: 'Moderador', MIEMBRO: 'Miembro' }
-const RANGOS_ASIGNABLES = ['MIEMBRO', 'MOD', 'SMOD']
+const ROLES = { ADMIN: 'Admin', SMOD: 'Super mod', MOD: 'Moderador', USUARIO: 'Usuario' }
+const RANGOS_ASIGNABLES = ['USUARIO', 'MOD', 'SMOD']
 
 function estadoCuenta(u) {
   if (!u.activo) return { texto: 'Baneado', color: 'bg-red-500/15 text-red-400' }
@@ -610,7 +610,7 @@ function FilaUsuario({ u, onCambio, esAdmin: actorAdmin }) {
           ) : u.rol === 'SMOD' ? (
             <span className="px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300">Super mod</span>
           ) : (
-            <button onClick={() => hacer(() => cambiarRol(u.id, u.rol === 'MOD' ? 'MIEMBRO' : 'MOD'))}
+            <button onClick={() => hacer(() => cambiarRol(u.id, u.rol === 'MOD' ? 'USUARIO' : 'MOD'))}
                     className={`px-2 py-1 rounded-lg border ${u.rol === 'MOD'
                       ? 'border-sky-500/30 text-sky-400 hover:bg-sky-500/10' : 'border-[#232327] text-[#a1a1aa] hover:text-[#f4f4f5]'}`}>
               {u.rol === 'MOD' ? 'Quitar MOD' : 'Hacer MOD'}

@@ -24,7 +24,7 @@ const ROLES_DISPLAY = {
   ADMIN:   { label: 'Admin',     color: 'bg-[#e8592e]/15 text-[#f2894f]' },
   SMOD:    { label: 'Super mod', color: 'bg-violet-500/15 text-violet-300' },
   MOD:     { label: 'Moderador', color: 'bg-sky-500/15 text-sky-400' },
-  MIEMBRO: { label: 'Miembro',   color: 'bg-gray-500/15 text-gray-400' },
+  USUARIO: { label: 'Usuario',   color: 'bg-gray-500/15 text-gray-400' },
 }
 
 const PREGUNTAS_EJEMPLO = [
@@ -68,7 +68,7 @@ function AvisoParo({ aviso, onCerrar }) {
   )
 }
 
-export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' }, onLogout = () => {}, onPerfil = () => {} }) {
+export default function Chat({ usuario = { nombre: 'Invitado', rol: 'USUARIO' }, onLogout = () => {}, onPerfil = () => {} }) {
   const [mensajes, setMensajes]             = useState([])
   const [input, setInput]                   = useState('')
   const [escribiendo, setEscribiendo]       = useState(false)

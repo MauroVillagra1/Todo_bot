@@ -164,7 +164,7 @@ No hay registro público ni seeds con contraseñas. Las cuentas se crean así:
   ```
 - **Cualquier rol desde la API** (solo ADMIN): `POST /api/v1/usuarios/` y `PATCH /api/v1/usuarios/{id}` para cambiar rol, activar/desactivar o resetear contraseña.
 
-Solo se aceptan emails de `DOMINIOS_PERMITIDOS` (por defecto `@alu.frt.utn.edu.ar`). Roles: `MIEMBRO`, `MOD`, `ADMIN`.
+Solo se aceptan emails de `DOMINIOS_PERMITIDOS` (por defecto `@alu.frt.utn.edu.ar`). Roles: `USUARIO`, `MOD` (docentes `@doc` al registrarse), `SMOD` y `ADMIN`.
 
 ## Desplegar a producción
 

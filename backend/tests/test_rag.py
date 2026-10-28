@@ -58,7 +58,7 @@ def _preguntar(client, usuario, texto, conv=None):
 
 
 def test_respuesta_con_estado_fuentes_y_fecha_de_la_base(client, crear_usuario, rag):
-    u = crear_usuario("u@alu.frt.utn.edu.ar", RolEnum.MIEMBRO)
+    u = crear_usuario("u@alu.frt.utn.edu.ar", RolEnum.USUARIO)
     data = _preguntar(client, u, "¿Hasta cuándo me inscribo a mesas?")
 
     assert data["respuesta"] == "Hasta el 28/11 [1]."

@@ -175,7 +175,7 @@ def test_mod_carga_posteo_de_whatsapp_y_queda_no_confirmado(client, crear_usuari
 
 def test_miembro_no_puede_cargar_ni_listar_fuentes(client, crear_usuario, tablas):
     wa = _fuente(tablas, TipoFuenteEnum.WHATSAPP, "Canal WhatsApp 1", confiabilidad=50)
-    u = crear_usuario("u@alu.frt.utn.edu.ar", RolEnum.MIEMBRO)
+    u = crear_usuario("u@alu.frt.utn.edu.ar", RolEnum.USUARIO)
     assert client.post(f"/api/v1/fuentes/{wa.id}/publicaciones", json=POSTEO, headers=auth(u)).status_code == 403
     assert client.get("/api/v1/fuentes/", headers=auth(u)).status_code == 403
 

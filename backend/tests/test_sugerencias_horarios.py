@@ -1,4 +1,4 @@
-"""Sugerencias de usuarios (MIEMBRO propone, MOD revisa) y grilla de horarios editable (ADMIN)."""
+"""Sugerencias de usuarios (USUARIO propone, MOD revisa) y grilla de horarios editable (ADMIN)."""
 from datetime import date
 
 import pytest

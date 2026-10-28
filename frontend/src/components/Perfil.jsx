@@ -12,7 +12,7 @@ import { actualizarPerfil, cambiarPassword } from '../api'
 import CampoClave from './CampoClave'
 import { boton, campo, errorDe, tarjeta } from './ui'
 
-const ROLES = { ADMIN: 'Administrador', SMOD: 'Super moderador', MOD: 'Moderador', MIEMBRO: 'Miembro' }
+const ROLES = { ADMIN: 'Administrador', SMOD: 'Super moderador', MOD: 'Moderador', USUARIO: 'Usuario' }
 
 function Aviso({ mensaje }) {
   if (!mensaje) return null

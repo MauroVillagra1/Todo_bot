@@ -182,7 +182,7 @@ export async function listarUsuarios({ q = '', rol = '' } = {}) {
   return data  // { items: [{ id, nombre, email, rol, activo, baneado_hasta, motivo_ban, ... }], total }
 }
 
-/** rol = 'MIEMBRO' | 'MOD' | 'SMOD' (un SMOD solo da o quita MOD). */
+/** rol = 'USUARIO' | 'MOD' | 'SMOD' (un SMOD solo da o quita MOD). */
 export async function cambiarRol(id, rol) {
   const { data } = await api.patch(`/api/v1/usuarios/${id}`, { rol })
   return data

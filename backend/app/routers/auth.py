@@ -5,7 +5,7 @@ Router de autenticación.
   POST /api/v1/auth/logout   → cierra todas las sesiones del usuario (revoca sus tokens)
   GET  /api/v1/auth/me       → devuelve el usuario autenticado actual
   POST /api/v1/auth/registro            → datos de la cuenta; manda un código al mail
-  POST /api/v1/auth/registro/verificar  → código correcto: crea la cuenta (MIEMBRO; docentes MOD) y loguea
+  POST /api/v1/auth/registro/verificar  → código correcto: crea la cuenta (USUARIO; docentes MOD) y loguea
   POST /api/v1/auth/recuperar           → manda un código si la cuenta existe
   POST /api/v1/auth/recuperar/confirmar → código correcto: cambia la contraseña
 """

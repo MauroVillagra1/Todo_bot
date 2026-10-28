@@ -3,8 +3,8 @@ Router de usuarios (gestión de cuentas).
 Las cuentas se crean por registro público (mail institucional) o por consola
 (create_admin.py); desde la app nadie crea cuentas.
   GET    /api/v1/usuarios?q=&rol=     → listar y buscar (SMOD y ADMIN)
-  PATCH  /api/v1/usuarios/{id}        → cambiar el rango: ADMIN da MIEMBRO, MOD o SMOD;
-                                        SMOD solo da o quita MOD (a MIEMBRO o MOD)
+  PATCH  /api/v1/usuarios/{id}        → cambiar el rango: ADMIN da USUARIO, MOD o SMOD;
+                                        SMOD solo da o quita MOD (a USUARIO o MOD)
   POST   /api/v1/usuarios/{id}/ban    → suspender (días) o banear permanente (ADMIN)
   DELETE /api/v1/usuarios/{id}/ban    → levantar la suspensión (ADMIN)
 Las cuentas ADMIN no se tocan desde la app. Todo cambio queda en el historial (se puede deshacer).
@@ -25,7 +25,7 @@ from app.services.auditoria import foto, registrar
 router = APIRouter(prefix="/usuarios", tags=["Usuarios"])
 
 CAMPOS_AUDITADOS = ("email", "rol", "activo", "baneado_hasta", "motivo_ban")
-RANGOS_DE_SMOD = {RolEnum.MIEMBRO, RolEnum.MOD}
+RANGOS_DE_SMOD = {RolEnum.USUARIO, RolEnum.MOD}
 
 
 def _auditar(db: Session, usuario: Usuario, antes: dict, actor) -> None:
@@ -74,7 +74,7 @@ def obtener_usuario(usuario_id: int, db: Session = Depends(get_db), _smod=Depend
 
 @router.patch("/{usuario_id}", response_model=UsuarioRead)
 def cambiar_rol(usuario_id: int, data: CambioRol, db: Session = Depends(get_db), actor=Depends(require_smod)):
-    """ADMIN: MIEMBRO, MOD o SMOD. SMOD: solo da o quita MOD."""
+    """ADMIN: USUARIO, MOD o SMOD. SMOD: solo da o quita MOD."""
     usuario = _no_admin(db, usuario_id)
     nuevo = RolEnum(data.rol)
     if actor.rol != RolEnum.ADMIN and (usuario.rol not in RANGOS_DE_SMOD or nuevo not in RANGOS_DE_SMOD):

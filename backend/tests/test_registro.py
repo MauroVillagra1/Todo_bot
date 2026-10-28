@@ -41,7 +41,7 @@ def test_registro_completo_crea_miembro_y_devuelve_token(client, db, mails):
 
     r = client.post("/api/v1/auth/registro/verificar", json={"email": ALU, "codigo": codigo})
     assert r.status_code == 201, r.text
-    assert r.json()["usuario"]["rol"] == "MIEMBRO" and r.json()["access_token"]
+    assert r.json()["usuario"]["rol"] == "USUARIO" and r.json()["access_token"]
     assert client.post("/api/v1/auth/login", json={"email": ALU, "password": "clave1234"}).status_code == 200
     # el código ya no sirve
     assert client.post("/api/v1/auth/registro/verificar", json={"email": ALU, "codigo": codigo}).status_code == 400

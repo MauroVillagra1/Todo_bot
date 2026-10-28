@@ -1,5 +1,6 @@
 """
 Crea una cuenta ADMIN, o actualiza la contraseña si ya existe.
+Para las cuentas de prueba de los 4 rangos: scripts/cuentas_prueba.py.
 
 Uso (desde backend/):
     python create_admin.py                      # usa el email por defecto

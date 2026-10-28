@@ -1,7 +1,7 @@
 """
 Criterios de aceptación del MVP (etapa 1):
   - Un correo no institucional no puede crear cuenta ni acceder.
-  - Un MIEMBRO no puede acceder a funciones de MOD/ADMIN, ni llamando directo al backend.
+  - Un USUARIO no puede acceder a funciones de MOD/ADMIN, ni llamando directo al backend.
 """
 from datetime import datetime, timedelta, timezone
 
@@ -34,7 +34,7 @@ def test_login_institucional_ignora_mayusculas(client, crear_usuario):
         json={"email": "Mauro.Villagra1@alu.frt.utn.edu.ar", "password": PASSWORD},
     )
     assert r.status_code == 200
-    assert r.json()["usuario"]["rol"] == "MIEMBRO"
+    assert r.json()["usuario"]["rol"] == "USUARIO"
 
 
 # ── RBAC en backend ───────────────────────────────────────────────────────────
@@ -49,7 +49,7 @@ ENDPOINTS_ADMIN = [
 ]
 
 
-@pytest.mark.parametrize("rol", [RolEnum.MIEMBRO, RolEnum.MOD])
+@pytest.mark.parametrize("rol", [RolEnum.USUARIO, RolEnum.MOD])
 @pytest.mark.parametrize("metodo,url,body", ENDPOINTS_ADMIN)
 def test_miembro_y_mod_reciben_403_en_endpoints_admin(client, crear_usuario, rol, metodo, url, body):
     u = crear_usuario("u@alu.frt.utn.edu.ar", rol)
@@ -78,7 +78,7 @@ def test_admin_cambia_rol_a_mod(client, crear_usuario):
 def test_admin_quita_rol_mod(client, crear_usuario):
     admin = crear_usuario("admin@alu.frt.utn.edu.ar", RolEnum.ADMIN)
     u = crear_usuario("u@alu.frt.utn.edu.ar", RolEnum.MOD)
-    assert client.patch(f"/api/v1/usuarios/{u.id}", json={"rol": "MIEMBRO"}, headers=auth(admin)).json()["rol"] == "MIEMBRO"
+    assert client.patch(f"/api/v1/usuarios/{u.id}", json={"rol": "USUARIO"}, headers=auth(admin)).json()["rol"] == "USUARIO"
 
 
 def test_admin_no_puede_dar_rol_admin(client, crear_usuario):
@@ -88,7 +88,7 @@ def test_admin_no_puede_dar_rol_admin(client, crear_usuario):
 
 
 @pytest.mark.parametrize("metodo,sufijo,body", [
-    ("patch", "", {"rol": "MIEMBRO"}), ("post", "/ban", {"motivo": "spam"}), ("delete", "/ban", None),
+    ("patch", "", {"rol": "USUARIO"}), ("post", "/ban", {"motivo": "spam"}), ("delete", "/ban", None),
 ])
 def test_cuentas_admin_no_se_tocan_desde_la_app(client, crear_usuario, metodo, sufijo, body):
     admin = crear_usuario("admin@alu.frt.utn.edu.ar", RolEnum.ADMIN)

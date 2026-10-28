@@ -53,7 +53,7 @@ def test_admin_ve_el_resumen_del_sistema(client, crear_usuario, datos):
 
 
 def test_miembro_no_ve_el_resumen(client, crear_usuario, datos):
-    u = crear_usuario("u@alu.frt.utn.edu.ar", RolEnum.MIEMBRO)
+    u = crear_usuario("u@alu.frt.utn.edu.ar", RolEnum.USUARIO)
     assert client.get("/api/v1/admin/resumen", headers=auth(u)).status_code == 403
 
 
@@ -69,7 +69,7 @@ def test_admin_activa_fuente_y_cambia_confiabilidad(client, crear_usuario, datos
     assert fuera_de_rango.status_code == 422
 
 
-@pytest.mark.parametrize("rol", [RolEnum.MIEMBRO, RolEnum.MOD, RolEnum.SMOD])
+@pytest.mark.parametrize("rol", [RolEnum.USUARIO, RolEnum.MOD, RolEnum.SMOD])
 def test_solo_admin_modifica_fuentes(client, crear_usuario, datos, rol):
     _, wa = datos
     u = crear_usuario("u@alu.frt.utn.edu.ar", rol)

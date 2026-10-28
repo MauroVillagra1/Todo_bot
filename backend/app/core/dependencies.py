@@ -65,8 +65,8 @@ def require_rol(*roles: str):
 
 # ── Dependencias pre-construidas ──────────────────────────────────────────────
 
-# MIEMBRO: cualquier usuario autenticado y activo
-require_miembro = get_current_user
+# USUARIO: cualquier usuario autenticado y activo
+require_usuario = get_current_user
 
 # MOD: carga información (formulario "Cargar información")
 require_mod = require_rol("MOD", "SMOD", "ADMIN")
