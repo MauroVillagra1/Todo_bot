@@ -48,6 +48,8 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           # El worker no firma tokens, pero Settings exige la variable
           SECRET_KEY: worker-sin-jwt
+          # Instagram por Apify (Settings → Secrets → APIFY_TOKEN); sin el secret se saltea
+          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
           ENVIRONMENT: production
           FUENTE: ${{ github.event.inputs.fuente }}
         run: |
@@ -58,6 +60,10 @@ jobs:
           if [ -n "$FUENTE" ]; then
             python scripts/run_ingest.py --fuente "$FUENTE"
           else
-            # Instagram se lee desde la PC local (scripts/instagram_local.ps1)
             python scripts/run_ingest.py --excluir-tipo INSTAGRAM
+            # Instagram (Apify, solo el texto de las publicaciones): una vez por día, a las 12 de Argentina,
+            # para cuidar el crédito gratis de Apify. Sin APIFY_TOKEN no trae nada.
+            if [ "$(date -u +%H)" = "15" ]; then
+              python scripts/run_ingest.py --tipo INSTAGRAM
+            fi
           fi

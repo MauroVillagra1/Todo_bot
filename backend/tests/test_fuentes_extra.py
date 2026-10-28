@@ -228,3 +228,38 @@ def test_instaloader_trae_lo_nuevo_saltando_fijados_viejos(tablas, monkeypatch):
     assert [p.id_externo for p in pubs] == ["ig:2", "ig:3"]
     assert pubs[0].url == "https://www.instagram.com/p/C2/" and pubs[0].titulo == "Aviso 2"
     assert f.ultima_revision.replace(tzinfo=timezone.utc) == datetime(2026, 9, 25, tzinfo=timezone.utc)
+
+
+# ── Instagram por Apify (solo el texto de las publicaciones) ──────────────────
+
+def _fuente_ig_apify():
+    return Fuente(nombre="SAE", tipo=TipoFuenteEnum.INSTAGRAM, url="https://instagram.com/sae.frt.ofc/",
+                  confiabilidad_base=70, config={"apify": True})
+
+
+def test_apify_sin_token_no_trae_nada_ni_falla(monkeypatch):
+    monkeypatch.delenv("APIFY_TOKEN", raising=False)
+    assert list(InstagramSource(_fuente_ig_apify()).obtener_cambios(None)) == []
+
+
+def test_apify_trae_el_texto_de_lo_nuevo_y_saltea_posts_sin_texto(monkeypatch):
+    from datetime import datetime, timezone
+    monkeypatch.setenv("APIFY_TOKEN", "tok")
+    pedidos = []
+
+    def responder(request: httpx.Request) -> httpx.Response:
+        import json
+        pedidos.append((request.url.params["token"], json.loads(request.content)))
+        return httpx.Response(200, json=[
+            {"id": "3", "shortCode": "C3", "url": "https://www.instagram.com/p/C3/", "timestamp": "2026-10-27T15:00:00.000Z",
+             "caption": "Becas de comedor\nInscripciones hasta el 5/11 en la SAE"},
+            {"id": "2", "shortCode": "C2", "timestamp": "2026-10-26T15:00:00.000Z", "caption": ""},  # flyer sin texto
+            {"id": "1", "shortCode": "C1", "timestamp": "2026-10-20T15:00:00.000Z", "caption": "Viejo"},
+        ])
+
+    src = InstagramSource(_fuente_ig_apify())
+    src.transport = httpx.MockTransport(responder)
+    items = list(src.obtener_cambios(datetime(2026, 10, 25, tzinfo=timezone.utc)))
+    assert pedidos == [("tok", {"username": ["sae.frt.ofc"], "resultsLimit": 30, "onlyPostsNewerThan": "2026-10-25"})]
+    assert [(i.id_externo, i.titulo, i.url) for i in items] == [
+        ("ig:3", "Becas de comedor", "https://www.instagram.com/p/C3/")]

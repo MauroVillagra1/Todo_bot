@@ -20,6 +20,15 @@ toma de la URL de la fuente. Si IG_SESION tiene un usuario de Instagram, usa
 la sesión guardada con `instaloader --login <usuario>` (recomendado: sin
 login Instagram suele cortar las consultas).
 
+Modo Apify (recomendado: corre en GitHub Actions, sin la PC local):
+
+  config: {"apify": true}
+
+Usa el actor "Instagram Post Scraper" de Apify con el token de la variable APIFY_TOKEN
+(sin token la fuente no trae nada y no falla). Trae solo publicaciones (no historias), solo el
+texto (caption), de la más nueva a la más vieja: la primera vez MAX_POSTS_PRIMERA_VEZ y después
+lo publicado desde la última revisión. Las publicaciones sin texto se saltean.
+
 Limitación: se lee el texto del posteo (caption); el texto dentro de las
 imágenes no, porque requeriría OCR.
 """
@@ -33,6 +42,8 @@ import httpx
 from app.ingest.sources.base import USER_AGENT, ItemCrudo, Source
 
 API = "https://graph.instagram.com/v23.0"
+APIFY_ACTOR = "https://api.apify.com/v2/acts/apify~instagram-post-scraper/run-sync-get-dataset-items"
+APIFY_TIMEOUT = 300  # segundos: el actor corre y devuelve los posts en la misma llamada
 MAX_PAGINAS = 20
 
 
@@ -68,6 +79,9 @@ class InstagramSource(Source):
     transport: httpx.BaseTransport | None = None  # solo para tests
 
     def obtener_cambios(self, desde: datetime | None) -> Iterator[ItemCrudo]:
+        if self.config.get("apify"):
+            yield from self._por_apify(desde)
+            return
         if self.config.get("instaloader"):
             yield from self._por_instaloader(desde)
             return
@@ -95,6 +109,27 @@ class InstagramSource(Source):
                 params = None  # la URL "next" ya trae todos los parámetros
                 if not url:
                     return
+
+    def _por_apify(self, desde: datetime | None) -> Iterator[ItemCrudo]:
+        token = os.environ.get("APIFY_TOKEN", "")
+        if not token:
+            return  # sin token de Apify no se lee (no es un error)
+        entrada = {"username": [usuario_de_url(self.fuente.url)], "resultsLimit": MAX_POSTS_PRIMERA_VEZ}
+        if desde:
+            entrada["onlyPostsNewerThan"] = desde.date().isoformat()
+        with httpx.Client(timeout=APIFY_TIMEOUT, transport=self.transport) as client:
+            resp = client.post(APIFY_ACTOR, params={"token": token}, json=entrada)
+            resp.raise_for_status()
+            posts = resp.json()
+        for post in posts:
+            caption = (post.get("caption") or "").strip()
+            if not caption or not post.get("timestamp") or post.get("error"):
+                continue  # sin texto no aporta (los flyers no se leen)
+            fecha = datetime.fromisoformat(post["timestamp"].replace("Z", "+00:00"))
+            if desde and fecha <= desde:
+                continue
+            url = post.get("url") or f"https://www.instagram.com/p/{post.get('shortCode')}/"
+            yield _item(str(post.get("id") or post.get("shortCode")), url, caption, fecha)
 
     def posts_instaloader(self, usuario: str) -> Iterator:
         """Posts del perfil, del más nuevo al más viejo (los tests lo reemplazan)."""
