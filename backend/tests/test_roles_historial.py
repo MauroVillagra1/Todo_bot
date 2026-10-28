@@ -224,3 +224,26 @@ def test_importar_horarios_reemplaza_la_comision(client, db, usuarios):
     _deshacer(client, admin, r.json()["cambio_id"])
     db.expire_all()
     assert [h.materia for h in db.query(HorarioClase)] == ["Física I"]
+
+
+# ── Quién cargó el dato (al pie de la respuesta, en gris) ─────────────────────
+
+def test_respuesta_dice_quien_cargo_el_dato(client, db, usuarios):
+    from app.rag.answer import _con_autoria
+    from app.rag.calendario import responder_calendario
+    from app.services.autoria import nota_de_carga
+    mod = usuarios[RolEnum.MOD]
+    mod.nombre, mod.apellido = "Ana García", "García"
+    db.commit()
+    info = client.post("/api/v1/informacion", json={"tipo": "AVISO", "contenido": "Cambio de aula de Física I al 105"},
+                       headers=auth(mod)).json()
+    assert nota_de_carga(db, [info["informacion_id"]]) == "_Cargado por Ana García (mod@alu.frt.utn.edu.ar)_"
+
+    salida = {"respuesta": "Física I pasa al aula 105 [1].", "fuentes": [{"numero": 1, "informacion_id": info["informacion_id"]}]}
+    assert _con_autoria(db, salida)["respuesta"].endswith("\n\n_Cargado por Ana García (mod@alu.frt.utn.edu.ar)_")
+    sin_citar = {"respuesta": "No sé.", "fuentes": [{"numero": 1, "informacion_id": info["informacion_id"]}]}
+    assert _con_autoria(db, sin_citar)["respuesta"] == "No sé."  # solo lo que la respuesta usó
+
+    _paro(client, usuarios[RolEnum.SMOD])
+    texto = responder_calendario(db, "¿hay clases mañana?", hoy=date.today())["respuesta"]
+    assert "_Cargado por Test (smod@alu.frt.utn.edu.ar)_" in texto

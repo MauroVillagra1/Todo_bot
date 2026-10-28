@@ -10,7 +10,7 @@ Convención usada en todo el proyecto:
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel, EmailStr, Field
+from pydantic import AfterValidator, BaseModel, EmailStr, Field, model_validator
 
 from app.core.config import get_settings
 from app.models.usuario import RolEnum
@@ -60,6 +60,8 @@ class UsuarioCreate(UsuarioBase):
 class UsuarioRead(UsuarioBase):
     """Datos que se devuelven al cliente. Nunca incluye el hash."""
     id: int
+    nombre_pila: str = ""  # el nombre y el apellido por separado (Mi perfil)
+    apellido: str = ""
     activo: bool  # False = suspensión permanente
     baneado_hasta: datetime | None = None
     motivo_ban: str | None = None
@@ -67,6 +69,15 @@ class UsuarioRead(UsuarioBase):
     actualizado_en: datetime
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="before")
+    @classmethod
+    def _separar_nombre(cls, datos):
+        if hasattr(datos, "partes_del_nombre"):  # viene del modelo Usuario
+            pila, apellido = datos.partes_del_nombre()
+            return {**{c: getattr(datos, c) for c in cls.model_fields if hasattr(datos, c)},
+                    "nombre_pila": pila, "apellido": apellido}
+        return datos
 
 
 class CambioRol(BaseModel):

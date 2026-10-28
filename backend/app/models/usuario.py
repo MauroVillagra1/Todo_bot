@@ -32,7 +32,9 @@ class Usuario(Base):
     __tablename__ = "usuarios"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    nombre: Mapped[str] = mapped_column(String(150), nullable=False)
+    nombre: Mapped[str] = mapped_column(String(150), nullable=False)  # completo: "Ana María García"
+    # Solo el apellido ("García"): el nombre de pila es lo que queda de `nombre`. Vacío en cuentas viejas.
+    apellido: Mapped[str | None] = mapped_column(String(74))
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     rol: Mapped[RolEnum] = mapped_column(Enum(RolEnum), nullable=False)
@@ -63,6 +65,14 @@ class Usuario(Base):
         if hasta.tzinfo is None:  # SQLite (tests) no guarda la zona
             hasta = hasta.replace(tzinfo=timezone.utc)
         return hasta if hasta > datetime.now(timezone.utc) else None
+
+    def partes_del_nombre(self) -> tuple[str, str]:
+        """(nombre de pila, apellido). Sin apellido guardado: la primera palabra es el nombre."""
+        completo = (self.nombre or "").strip()
+        if self.apellido and completo.endswith(" " + self.apellido):
+            return completo[: -len(self.apellido) - 1].strip(), self.apellido
+        pila, _, resto = completo.partition(" ")
+        return pila, resto.strip()
 
     def __repr__(self) -> str:
         return f"<Usuario id={self.id} email={self.email} rol={self.rol}>"

@@ -80,7 +80,7 @@ export async function login(email, password) {
 // ── Mi perfil ─────────────────────────────────────────────────────────────────
 
 /** Solo el nombre y apellido: el mail institucional no se cambia. */
-export const actualizarPerfil = nombre => api.patch('/api/v1/auth/me', { nombre }).then(r => r.data)
+export const actualizarPerfil = (nombre, apellido) => api.patch('/api/v1/auth/me', { nombre, apellido }).then(r => r.data)
 
 /** Cierra las demás sesiones; devuelve una sesión nueva para este dispositivo. */
 export async function cambiarPassword(actual, nueva) {

@@ -1,9 +1,9 @@
 /**
- * Mi perfil: los datos de la cuenta. Por ahora se cambia el nombre y apellido y la contraseña;
+ * Mi perfil: los datos de la cuenta. Se cambian el nombre, el apellido (por separado) y la contraseña;
  * el mail institucional se muestra pero no se puede cambiar.
  *
  * Props:
- *   usuario:        datos de la sesión ({ nombre, email, rol, creado_en, ... })
+ *   usuario:        datos de la sesión ({ nombre, nombre_pila, apellido, email, rol, creado_en, ... })
  *   onActualizado:  (usuario) => void — nombre nuevo (para la barra lateral)
  */
 import { useState } from 'react'
@@ -20,18 +20,23 @@ function Aviso({ mensaje }) {
 }
 
 function Datos({ usuario, onActualizado }) {
-  const [nombre, setNombre] = useState(usuario.nombre)
+  // Cuentas viejas sin apellido guardado: el backend separa la primera palabra como nombre
+  const [nombre, setNombre] = useState(usuario.nombre_pila ?? usuario.nombre)
+  const [apellido, setApellido] = useState(usuario.apellido ?? '')
   const [guardando, setGuardando] = useState(false)
   const [mensaje, setMensaje] = useState(null)
+  const sinCambios = nombre.trim() === (usuario.nombre_pila ?? usuario.nombre) && apellido.trim() === (usuario.apellido ?? '')
 
   async function guardar(e) {
     e.preventDefault()
-    if (nombre.trim().split(/\s+/).length < 2) return setMensaje({ ok: false, texto: 'Escribí tu nombre y apellido.' })
+    if (nombre.trim().length < 2 || apellido.trim().length < 2)
+      return setMensaje({ ok: false, texto: 'Completá tu nombre y tu apellido.' })
     setGuardando(true)
     setMensaje(null)
     try {
-      const actualizado = await actualizarPerfil(nombre.trim())
-      setNombre(actualizado.nombre)
+      const actualizado = await actualizarPerfil(nombre.trim(), apellido.trim())
+      setNombre(actualizado.nombre_pila)
+      setApellido(actualizado.apellido)
       onActualizado(actualizado)
       setMensaje({ ok: true, texto: 'Guardado.' })
     } catch (err) {
@@ -47,11 +52,18 @@ function Datos({ usuario, onActualizado }) {
   return (
     <form onSubmit={guardar} className={`${tarjeta} space-y-4`}>
       <h3 className="text-sm font-semibold text-[#f4f4f5]">Datos personales</h3>
-      <label className="block text-xs text-[#a1a1aa]">
-        Nombre y apellido
-        <input required minLength={5} maxLength={150} value={nombre} onChange={e => setNombre(e.target.value)}
-               autoComplete="name" className={`${campo} mt-1`} />
-      </label>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <label className="block text-xs text-[#a1a1aa]">
+          Nombre
+          <input required minLength={2} maxLength={74} value={nombre} onChange={e => setNombre(e.target.value)}
+                 autoComplete="given-name" className={`${campo} mt-1`} />
+        </label>
+        <label className="block text-xs text-[#a1a1aa]">
+          Apellido
+          <input required minLength={2} maxLength={74} value={apellido} onChange={e => setApellido(e.target.value)}
+                 autoComplete="family-name" className={`${campo} mt-1`} />
+        </label>
+      </div>
       <label className="block text-xs text-[#a1a1aa]">
         Mail institucional
         <div className="relative mt-1">
@@ -65,7 +77,7 @@ function Datos({ usuario, onActualizado }) {
         {desde && <span>Cuenta creada el {desde}</span>}
       </div>
       <div className="flex items-center gap-3">
-        <button type="submit" disabled={guardando || nombre.trim() === usuario.nombre} className={boton}>
+        <button type="submit" disabled={guardando || sinCambios} className={boton}>
           {guardando ? 'Guardando…' : 'Guardar cambios'}
         </button>
         <Aviso mensaje={mensaje} />

@@ -29,6 +29,7 @@ from app.rag.horarios import responder_horario
 from app.rag.mesas import responder_mesa
 from app.rag.search import MAX_RESULTADOS, Resultado, buscar
 from app.services import llm
+from app.services.autoria import nota_de_carga
 from app.services.metricas import incrementar
 
 logger = logging.getLogger(__name__)
@@ -140,6 +141,20 @@ def _fuente(n: int, r: Resultado) -> dict:
         "fecha": r.fecha.date().isoformat() if r.fecha else None,
         "estado": r.estado,
     }
+
+
+def _con_autoria(db: Session, salida: dict) -> dict:
+    """Al pie, en cursiva (gris en el chat): quién cargó la información citada, si la cargó una persona."""
+    citadas = [f["informacion_id"] for f in salida.get("fuentes", [])
+               if f.get("informacion_id") and f"[{f['numero']}]" in salida["respuesta"]]
+    try:
+        nota = nota_de_carga(db, citadas) if citadas else None
+    except Exception as e:  # la nota es un extra: sin ella la respuesta sale igual
+        logger.warning("No se pudo saber quién cargó la información: %s", str(e)[:200])
+        nota = None
+    if nota:
+        salida["respuesta"] = f"{salida['respuesta']}\n\n{nota}"
+    return salida
 
 
 def _peor_estado(estados: list[str]) -> str:
@@ -272,10 +287,12 @@ def _buscar_y_responder(db: Session, pregunta: str, historial: list[dict], anter
     ]
     incrementar(db, "llamadas_llm")
     try:
-        return armar_respuesta(llm.completar(mensajes, max_tokens=MAX_TOKENS_RESPUESTA), resultados)
+        texto_llm = llm.completar(mensajes, max_tokens=MAX_TOKENS_RESPUESTA)
     except Exception as e:
         logger.warning("LLM no disponible: %s", str(e)[:300])
         incrementar(db, "errores_llm")
+    else:
+        return _con_autoria(db, armar_respuesta(texto_llm, resultados))
 
     # Sin cupo o sin servicio de IA: respuesta extractiva con frases textuales de las fuentes
     texto, usados = responder_extractivo(pregunta, resultados)
@@ -283,13 +300,13 @@ def _buscar_y_responder(db: Session, pregunta: str, historial: list[dict], anter
         incrementar(db, "respuestas_extractivas")
         fuentes = [(n, resultados[n - 1]) for n in usados]
         fechas = [r.fecha for _, r in fuentes if r.fecha]
-        return {
+        return _con_autoria(db, {
             "respuesta": texto,
             "estado": _peor_estado([r.estado for _, r in fuentes]),
             "fuentes": [_fuente(n, r) for n, r in fuentes],
             "fecha_informacion": max(fechas).date().isoformat() if fechas else None,
             "sin_ia": True,
-        }
+        })
     return {
         "respuesta": SIN_LLM,
         "estado": "NO_CONFIRMADA",

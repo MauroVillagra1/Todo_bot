@@ -40,15 +40,7 @@ def _limpiar_nombre(v: str) -> str:
     return v
 
 
-def _nombre_completo(v: str) -> str:
-    v = _limpiar_nombre(v)
-    if len(v.split()) < 2:
-        raise ValueError("Escribí tu nombre y apellido")
-    return v
-
-
 Nombre = Annotated[str, Field(min_length=2, max_length=74), AfterValidator(_limpiar_nombre)]
-NombreCompleto = Annotated[str, Field(min_length=5, max_length=150), AfterValidator(_nombre_completo)]
 
 
 class RegistroSolicitud(BaseModel):
@@ -65,7 +57,12 @@ class RegistroSolicitud(BaseModel):
 
 class PerfilUpdate(BaseModel):
     """Lo que cada usuario puede cambiar de su cuenta (el mail institucional no)."""
-    nombre: NombreCompleto
+    nombre: Nombre
+    apellido: Nombre
+
+    @property
+    def nombre_completo(self) -> str:
+        return f"{self.nombre} {self.apellido}"
 
 
 class CambioPassword(BaseModel):

@@ -42,6 +42,7 @@ def test_registro_completo_crea_miembro_y_devuelve_token(client, db, mails):
     r = client.post("/api/v1/auth/registro/verificar", json={"email": ALU, "codigo": codigo})
     assert r.status_code == 201, r.text
     assert r.json()["usuario"]["rol"] == "USUARIO" and r.json()["access_token"]
+    assert (r.json()["usuario"]["nombre_pila"], r.json()["usuario"]["apellido"]) == ("Ana", "Pérez")
     assert client.post("/api/v1/auth/login", json={"email": ALU, "password": "clave1234"}).status_code == 200
     # el código ya no sirve
     assert client.post("/api/v1/auth/registro/verificar", json={"email": ALU, "codigo": codigo}).status_code == 400
@@ -146,14 +147,25 @@ def test_registro_pide_nombre_y_apellido(client):
     assert client.post("/api/v1/auth/registro", json={**DATOS, "apellido": "P3rez"}).status_code == 422
 
 
-def test_perfil_cambia_nombre_pero_no_el_mail(client, crear_usuario):
+def test_perfil_cambia_nombre_y_apellido_por_separado_pero_no_el_mail(client, crear_usuario):
     from conftest import auth
     u = crear_usuario("a@alu.frt.utn.edu.ar")
-    r = client.patch("/api/v1/auth/me", json={"nombre": "  María   José Gómez ", "email": "otro@alu.frt.utn.edu.ar"},
-                     headers=auth(u))
+    r = client.patch("/api/v1/auth/me", json={"nombre": "  María   José ", "apellido": "Gómez Paz",
+                                              "email": "otro@alu.frt.utn.edu.ar"}, headers=auth(u))
     assert r.status_code == 200
-    assert r.json()["nombre"] == "María José Gómez" and r.json()["email"] == "a@alu.frt.utn.edu.ar"
+    data = r.json()
+    assert (data["nombre"], data["nombre_pila"], data["apellido"]) == ("María José Gómez Paz", "María José", "Gómez Paz")
+    assert data["email"] == "a@alu.frt.utn.edu.ar"
     assert client.patch("/api/v1/auth/me", json={"nombre": "María"}, headers=auth(u)).status_code == 422
+    assert client.patch("/api/v1/auth/me", json={"nombre": "María", "apellido": "G0mez"}, headers=auth(u)).status_code == 422
+
+
+def test_cuenta_vieja_sin_apellido_se_separa_por_la_primera_palabra(client, crear_usuario):
+    from conftest import auth
+    u = crear_usuario("b@alu.frt.utn.edu.ar")
+    u.nombre = "Juan Carlos Pérez"
+    data = client.get("/api/v1/auth/me", headers=auth(u)).json()
+    assert (data["nombre_pila"], data["apellido"]) == ("Juan", "Carlos Pérez")
 
 
 def test_cambiar_password_pide_la_actual_y_cierra_otras_sesiones(client, crear_usuario):

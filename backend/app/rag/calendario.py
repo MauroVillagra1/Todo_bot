@@ -18,6 +18,7 @@ from app.ingest.horarios import normalizar
 from app.models.calendario import EventoCalendario
 from app.models.mesa import MesaFecha
 from app.rag.fechas import MESES, anio_del_mes, dia, fecha_mencionada, hoy_argentina, mes_mencionado, rango
+from app.services.autoria import nota_de_carga
 from app.services.avisos import paros
 
 MAX_EVENTOS = 12
@@ -213,6 +214,8 @@ def _estado_del_dia(db: Session, d: date, hoy: date) -> dict:
     for p in paros(db, d, d):
         lineas.append(f"⚠️ **{p.titulo}**")
         lineas.append(p.contenido)
+        if nota := nota_de_carga(db, [p.id]):
+            lineas.append(nota)
         lineas.append("")
     eventos = db.query(EventoCalendario).filter(EventoCalendario.fecha_inicio <= d).all()
     del_dia = [e for e in eventos if e.hasta() >= d]

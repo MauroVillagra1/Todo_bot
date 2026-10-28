@@ -115,8 +115,8 @@ def get_me(current_user: Usuario = Depends(get_current_user)):
 @router.patch("/me", response_model=UsuarioRead)
 def editar_perfil(datos: PerfilUpdate, current_user: Usuario = Depends(get_current_user),
                   db: Session = Depends(get_db)):
-    """Mi perfil: por ahora solo el nombre y apellido (el mail institucional no se cambia)."""
-    current_user.nombre = datos.nombre
+    """Mi perfil: nombre y apellido por separado (el mail institucional no se cambia)."""
+    current_user.nombre, current_user.apellido = datos.nombre_completo, datos.apellido
     db.commit()
     db.refresh(current_user)
     return current_user
@@ -240,7 +240,8 @@ def solicitar_registro(datos: RegistroSolicitud, db: Session = Depends(get_db)):
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, espera)
     # La cuenta todavía no existe: nombre y contraseña (hasheada) esperan junto al código
     _enviar_codigo(db, datos.email, P.REGISTRO,
-                   {"nombre": datos.nombre_completo, "password_hash": hash_password(datos.password)})
+                   {"nombre": datos.nombre_completo, "apellido": datos.apellido,
+                    "password_hash": hash_password(datos.password)})
     return Mensaje(mensaje=f"Te enviamos un código de 6 dígitos a {datos.email}.")
 
 
@@ -250,7 +251,8 @@ def verificar_registro(datos: CodigoIngresado, db: Session = Depends(get_db)):
     if _existe(db, datos.email):  # se creó por otro lado mientras tanto
         db.commit()
         raise HTTPException(status.HTTP_409_CONFLICT, YA_REGISTRADO)
-    usuario = Usuario(nombre=codigo.datos["nombre"], email=datos.email, rol=rol_inicial(datos.email),
+    usuario = Usuario(nombre=codigo.datos["nombre"], apellido=codigo.datos.get("apellido"), email=datos.email,
+                      rol=rol_inicial(datos.email),
                       password_hash=codigo.datos["password_hash"])
     db.add(usuario)
     db.commit()
