@@ -29,13 +29,17 @@ from app.rag.horarios import responder_horario
 from app.rag.mesas import responder_mesa
 from app.rag.search import MAX_RESULTADOS, Resultado, buscar
 from app.services import llm
-from app.services.autoria import nota_de_carga
+from app.services.autoria import autores, nota_de_carga
 from app.services.metricas import incrementar
 
 logger = logging.getLogger(__name__)
 
 MAX_CONTEXTO = 6000  # caracteres (~1500 tokens)
 MAX_TOKENS_RESPUESTA = 500
+# Con datos de la base (horarios, calendario, mesas) el contexto y la respuesta pueden ser listas largas
+MAX_DATOS_BASE = 5000
+MAX_TOKENS_CON_DATOS = 1000
+FUENTE_BASE = "Datos de la base de la facultad"
 
 SIN_EVIDENCIA = "No encontré información institucional sobre eso."
 SIN_LLM = "No pude generar la respuesta en este momento. Estas publicaciones pueden servirte:"
@@ -54,7 +58,14 @@ Reglas:
   convocatoria o postulación, decí que ya cerró ese día (aunque la fuente figure vigente).
 - Si hay mensajes anteriores en la conversación, usalos solo para entender a qué se refiere la
   pregunta actual ("¿y cuándo cierra?", "¿quién la da?"); los datos salen igual del CONTEXTO.
-- Respondé en español, breve (máximo 5 oraciones o una lista corta), sin tablas."""
+- Una fuente puede ser "Datos de la base de la facultad" (horarios, calendario académico, mesas de
+  examen y tribunales, paros): es la información oficial y estructurada. Las fuentes "Carga de
+  moderadores" y "Sugerencias de usuarios" son novedades que cargaron personas: si cambian o
+  complementan algo de los datos oficiales (una clase virtual, un cambio de aula, una clase suspendida),
+  decilo explícitamente en la respuesta, combinándolo con el dato oficial.
+- Interpretá la pregunta y respondé lo que la persona necesita, no repitas todo el contexto.
+- Respondé en español, breve (máximo 5 oraciones o una lista corta), sin tablas. Si piden una lista
+  ("todos los feriados", "qué materias tengo"), listá todos los elementos que correspondan."""
 
 # De mejor a peor: el estado de la respuesta es el peor entre sus fuentes
 _ORDEN_ESTADO = ["CONFIRMADA", "PROBABLE", "NO_CONFIRMADA", "CONTRADICTORIA", "DESACTUALIZADA"]
@@ -117,14 +128,14 @@ def marcar_fechas_pasadas(texto: str, publicada: date | None, hoy: date) -> str:
         lambda m: marcar(m, _fecha(int(m.group(3)), int(m.group(2)), int(m.group(1)))), texto)
 
 
-def _contexto(resultados: list[Resultado]) -> str:
+def _contexto(resultados: list[Resultado], max_caracteres: int = MAX_CONTEXTO) -> str:
     bloques, largo = [], 0
     hoy = _ahora().astimezone(ARGENTINA).date()
     for n, r in enumerate(resultados, 1):
         fecha = f"{r.fecha:%d/%m/%Y}" if r.fecha else "sin fecha"
         texto = marcar_fechas_pasadas(r.texto, r.fecha.date() if r.fecha else None, hoy)
         bloque = f"[{n}] {r.titulo} — {r.fuente}, {fecha}, estado {r.estado}\n{texto}"
-        if largo + len(bloque) > MAX_CONTEXTO and bloques:
+        if largo + len(bloque) > max_caracteres and bloques:
             break
         bloques.append(bloque)
         largo += len(bloque)
@@ -141,6 +152,62 @@ def _fuente(n: int, r: Resultado) -> dict:
         "fecha": r.fecha.date().isoformat() if r.fecha else None,
         "estado": r.estado,
     }
+
+
+# Información que cargan personas (panel, importaciones, sugerencias aceptadas): ver routers/informacion.py
+# y routers/sugerencias.py. Las respuestas con SQL (horarios, calendario, mesas) la suman como novedad.
+FUENTES_CARGADAS = ("Carga de moderadores", "Sugerencias de usuarios")
+MAX_NOVEDADES = 3
+# Palabras que no alcanzan para decir que una novedad habla de lo mismo que la pregunta
+_GENERICAS_NOVEDAD = {
+    "clase", "clases", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo", "manana",
+    "hoy", "ayer", "semana", "como", "cuando", "donde", "horario", "horarios", "materia", "materias", "hay",
+    "habra", "tengo", "tenemos", "sera", "seran", "esta", "este", "estos", "estas", "para", "sobre", "algun",
+    "alguna", "cambio", "cambios", "dato", "datos", "final", "finales", "mesa", "mesas", "examen", "fecha",
+    "fechas", "dias", "facultad", "cuatrimestre", "anual", "comision", "aula", "que", "cual", "cuales",
+}
+
+
+def _palabras_clave(texto: str) -> set[str]:
+    return {t for t in re.findall(r"[a-z]+", normalizar(texto)) if len(t) >= 4 and t not in _GENERICAS_NOVEDAD}
+
+
+def _con_novedades(db: Session, pregunta: str, salida: dict) -> dict:
+    """
+    Horarios, calendario y mesas se responden con SQL sin mirar lo cargado a mano: si alguien cargó
+    o sugirió algo sobre lo mismo ("la clase del lunes de Administración de Recursos será virtual"),
+    se agrega abajo con quién lo cargó.
+    """
+    try:
+        claves = _palabras_clave(pregunta)
+        if not claves:
+            return salida
+        resultados = [r for r in buscar(db, pregunta, flexible=False)
+                      if r.fuente in FUENTES_CARGADAS and claves & _palabras_clave(f"{r.titulo} {r.texto}")]
+        ids = list(dict.fromkeys(r.informacion_id for r in resultados))[:MAX_NOVEDADES]
+        if not ids:
+            return salida
+        infos = {i.id: i for i in db.query(Informacion).filter(Informacion.id.in_(ids))}
+        autores_por_info = autores(db, ids)
+        fuentes = list(salida.get("fuentes", []))
+        lineas = ["", "📢 **Novedades cargadas sobre esto:**"]
+        for i in ids:
+            info = infos.get(i)
+            if not info:
+                continue
+            numero = len(fuentes) + 1
+            r = next(r for r in resultados if r.informacion_id == i)
+            fuentes.append({**_fuente(numero, r), "titulo": info.titulo})
+            cuerpo = info.contenido.strip()
+            if cuerpo.startswith(info.titulo):  # la primera línea suele ser el título
+                cuerpo = cuerpo[len(info.titulo):].strip()
+            lineas.append(f"- **{info.titulo}**" + (f": {cuerpo[:400]}" if cuerpo else "") + f" [{numero}]")
+            if i in autores_por_info:
+                lineas.append(f"  _{autores_por_info[i]}_")
+        return {**salida, "respuesta": salida["respuesta"].rstrip() + "\n" + "\n".join(lineas), "fuentes": fuentes}
+    except Exception as e:  # las novedades son un extra: la respuesta principal sale igual
+        logger.warning("No se pudieron sumar las novedades: %s", str(e)[:200])
+        return salida
 
 
 def _con_autoria(db: Session, salida: dict) -> dict:
@@ -236,35 +303,47 @@ def _responder_sin_cache(db: Session, pregunta: str, historial: list[dict], ante
         incrementar(db, "conversacion")
         return charla
 
-    # Calendario académico ("¿hay clases mañana?", feriados, cuatrimestres) y mesas de examen: SQL, sin LLM.
+    # Calendario académico, mesas de examen y horarios salen de la base con SQL. No responden solos:
+    # se le pasan a la IA junto con lo que cargaron o sugirieron personas, y ella interpreta la
+    # pregunta y arma la respuesta. Si la IA no está disponible, se usa la respuesta armada con SQL.
     # Seguimientos: "¿y el lunes?" después de "¿hay clases mañana?", "¿y Física?" después de una mesa.
+    datos = None
     calendario = responder_calendario(db, pregunta) or (
         anterior and responder_calendario(db, anterior) and _es_del_dia(anterior)
         and responder_calendario(db, f"hay clases {pregunta}"))
     if calendario:
         incrementar(db, "consultas_calendario_sql")
-        return calendario
-    mesa = responder_mesa(db, pregunta) or (
-        anterior and responder_mesa(db, anterior) and responder_mesa(db, f"final de {pregunta}"))
-    if mesa:
-        incrementar(db, "consultas_mesas_sql")
-        return mesa
+        datos = calendario
+    if not datos:
+        mesa = responder_mesa(db, pregunta) or (
+            anterior and responder_mesa(db, anterior) and responder_mesa(db, f"final de {pregunta}"))
+        if mesa:
+            incrementar(db, "consultas_mesas_sql")
+            datos = mesa
+    if not datos:
+        horario = responder_horario(db, pregunta, anterior)
+        if horario:
+            incrementar(db, "consultas_horario_sql")
+            datos = horario
 
-    # Horarios: se responden con SQL sobre las grillas, sin LLM
-    horario = responder_horario(db, pregunta, anterior)
-    if horario:
-        incrementar(db, "consultas_horario_sql")
-        return horario
-
-    return _buscar_y_responder(db, pregunta, historial, anterior, [])
+    return _buscar_y_responder(db, pregunta, historial, anterior, [], datos=datos)
 
 
 def _es_del_dia(pregunta: str) -> bool:
     return bool(re.search(r"\b(hay clases?|abre|abierta|cerrada|feriado|paro)\b", normalizar(pregunta)))
 
 
+def _como_fuente(datos: dict) -> Resultado:
+    """La respuesta armada con SQL, como fuente del contexto (sin sus números de cita, que cambian)."""
+    texto = re.sub(r"\s*\[\d+\]", "", datos["respuesta"])[:MAX_DATOS_BASE]
+    origen = (datos.get("fuentes") or [{}])[0]
+    return Resultado(chunk_id=0, informacion_id=None, titulo=origen.get("titulo") or FUENTE_BASE, texto=texto,
+                     url=origen.get("url") or get_settings().SITE_URL, fuente=FUENTE_BASE, fecha=None,
+                     estado="CONFIRMADA", puntaje=0)
+
+
 def _buscar_y_responder(db: Session, pregunta: str, historial: list[dict], anterior: str,
-                        excluir: list[int]) -> dict:
+                        excluir: list[int], datos: dict | None = None) -> dict:
     # Para preguntas de seguimiento se busca también con la pregunta anterior
     # Con la pregunta anterior solo la búsqueda precisa: la flexible traería el tema viejo
     resultados = buscar(db, f"{anterior} {pregunta}".strip(), excluir=excluir, flexible=not anterior)
@@ -276,23 +355,32 @@ def _buscar_y_responder(db: Session, pregunta: str, historial: list[dict], anter
         vistos: set[int] = set()
         resultados = [r for r in intercalados if not (r.chunk_id in vistos or vistos.add(r.chunk_id))]
         resultados = resultados[:MAX_RESULTADOS]
+    if datos:  # los datos de la base van primero: son la fuente [1]
+        resultados = [_como_fuente(datos), *resultados]
     if not resultados:
         incrementar(db, "consultas_sin_evidencia")
         return {"respuesta": SIN_EVIDENCIA, "estado": "NO_CONFIRMADA", "fuentes": [], "fecha_informacion": None}
 
+    contexto = _contexto(resultados, max_caracteres=MAX_CONTEXTO + (MAX_DATOS_BASE if datos else 0))
     mensajes = [
-        {"role": "system", "content": f"{SISTEMA}\n\nFECHA DE HOY: {_hoy()}\n\nCONTEXTO:\n{_contexto(resultados)}"},
+        {"role": "system", "content": f"{SISTEMA}\n\nFECHA DE HOY: {_hoy()}\n\nCONTEXTO:\n{contexto}"},
         *historial,
         {"role": "user", "content": pregunta},
     ]
     incrementar(db, "llamadas_llm")
     try:
-        texto_llm = llm.completar(mensajes, max_tokens=MAX_TOKENS_RESPUESTA)
+        texto_llm = llm.completar(mensajes, max_tokens=MAX_TOKENS_CON_DATOS if datos else MAX_TOKENS_RESPUESTA)
     except Exception as e:
         logger.warning("LLM no disponible: %s", str(e)[:300])
         incrementar(db, "errores_llm")
     else:
-        return _con_autoria(db, armar_respuesta(texto_llm, resultados))
+        salida = armar_respuesta(texto_llm, resultados)
+        if not (datos and salida["respuesta"] == SIN_EVIDENCIA):
+            return _con_autoria(db, salida)
+        # La IA dijo que no sabía pese a tener los datos de la base: vale la respuesta con SQL
+
+    if datos:  # sin IA: la respuesta armada con SQL, más lo cargado por personas sobre lo mismo
+        return {**_con_novedades(db, pregunta, datos), "sin_ia": True}
 
     # Sin cupo o sin servicio de IA: respuesta extractiva con frases textuales de las fuentes
     texto, usados = responder_extractivo(pregunta, resultados)

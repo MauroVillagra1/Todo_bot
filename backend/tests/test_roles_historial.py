@@ -247,3 +247,30 @@ def test_respuesta_dice_quien_cargo_el_dato(client, db, usuarios):
     _paro(client, usuarios[RolEnum.SMOD])
     texto = responder_calendario(db, "¿hay clases mañana?", hoy=date.today())["respuesta"]
     assert "_Cargado por Test (smod@alu.frt.utn.edu.ar)_" in texto
+
+
+def test_la_ia_recibe_los_datos_de_la_base_y_lo_cargado(client, db, usuarios, monkeypatch):
+    from app.rag import answer
+    db.add(HorarioClase(comision="3K01", anio=3, dia=1, inicio="18:00", fin="20:00",
+                        materia="Administración de Recursos", materia_norm="administracion de recursos"))
+    db.commit()
+    from app.rag.search import Resultado
+    cargada = client.post("/api/v1/informacion", headers=auth(usuarios[RolEnum.MOD]),
+                          json={"tipo": "AVISO", "contenido": "Administración de Recursos: la clase del lunes 2 será virtual"}).json()
+    novedad = Resultado(chunk_id=1, informacion_id=cargada["informacion_id"], titulo=cargada["titulo"],
+                        texto=cargada["contenido"], url="https://utnia.netlify.app", fuente="Carga de moderadores",
+                        fecha=None, estado="CONFIRMADA", puntaje=1)
+    monkeypatch.setattr(answer, "buscar", lambda *a, **k: [novedad])  # la búsqueda real usa SQL de Postgres
+    vistos = {}
+
+    def ia(mensajes, max_tokens=500):
+        vistos["contexto"] = mensajes[0]["content"]
+        return "El lunes 2 la clase de Administración de Recursos (18 a 20) es virtual [1][2]."
+    monkeypatch.setattr(answer.llm, "completar", ia)
+
+    r = answer._responder_sin_cache(db, "¿La clase de Administración de Recursos del lunes es virtual?", [], "")
+    assert "Datos de la base de la facultad" in vistos["contexto"] and "18:00" in vistos["contexto"]
+    assert "será virtual" in vistos["contexto"]  # lo cargado llega a la IA junto con el horario
+    assert r["respuesta"].startswith("El lunes 2 la clase")
+    assert "_Cargado por Test (mod@alu.frt.utn.edu.ar)_" in r["respuesta"]
+    assert r["fuentes"][0]["fuente"] == "Datos de la base de la facultad"
