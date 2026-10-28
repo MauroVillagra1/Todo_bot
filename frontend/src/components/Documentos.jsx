@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Download, FileText, Trash2, Upload } from 'lucide-react'
 import { actualizarDocumento, borrarDocumento, listarDocumentos, subirDocumento, urlDocumento } from '../api'
-import { boton, campo, errorDe, tarjeta } from './ui'
+import { boton, campo, errorDe, tarjeta, confirmar } from './ui'
 import JulietteEscena, { FRASES } from './JulietteEscena'
 
 const MAX_MB = 2
@@ -100,7 +100,7 @@ export default function Documentos({ esAdmin = false }) {
   }
 
   async function borrar(d) {
-    if (!confirm(`¿Borrar «${d.nombre}»? El chat deja de ofrecerlo.`)) return
+    if (!(await confirmar(`¿Borrar «${d.nombre}»? El chat deja de ofrecerlo.`))) return
     try { await borrarDocumento(d.id); setDocumentos(prev => prev.filter(x => x.id !== d.id)) }
     catch (err) { setError(errorDe(err, 'No se pudo borrar')) }
   }

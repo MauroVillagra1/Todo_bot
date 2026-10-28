@@ -11,7 +11,7 @@ import {
   listarMesasFechas, listarMesasMaterias,
 } from '../api'
 import { Celda, celda } from './GrillaHorarios'
-import { errorDe, tarjeta } from './ui'
+import { errorDe, tarjeta, confirmar } from './ui'
 
 const ROMANO = { 1: 'I', 2: 'II', 3: 'III' }
 const SEDES = ['Casa Central', 'Anexo Concepción']
@@ -37,7 +37,7 @@ function Fechas() {
     } catch (err) { setError(errorDe(err, 'No se pudo guardar')); throw err }
   }
   async function borrar(f) {
-    if (!confirm(`¿Borrar la Mesa ${ROMANO[f.mesa]} del ${f.turno}º turno?`)) return
+    if (!(await confirmar(`¿Borrar la Mesa ${ROMANO[f.mesa]} del ${f.turno}º turno?`))) return
     try { await borrarMesaFecha(f.id); setFechas(prev => prev.filter(x => x.id !== f.id)) }
     catch (err) { setError(errorDe(err, 'No se pudo borrar')) }
   }
@@ -116,7 +116,7 @@ function FilaMateria({ m, onCambio, onBorrado, setError }) {
     catch (err) { setError(errorDe(err, 'No se pudo guardar')); throw err }
   }
   async function borrar() {
-    if (!confirm(`¿Borrar ${m.materia} (${m.sede})?`)) return
+    if (!(await confirmar(`¿Borrar ${m.materia} (${m.sede})?`))) return
     try { await borrarMesaMateria(m.id); onBorrado(m.id) }
     catch (err) { setError(errorDe(err, 'No se pudo borrar')) }
   }

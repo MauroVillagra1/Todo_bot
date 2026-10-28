@@ -19,6 +19,7 @@ import MensajeBurbuja from './MensajeBurbuja'
 import Panel from './Panel'
 import Perfil from './Perfil'
 import Sugerir from './Sugerir'
+import { confirmar } from './ui'
 
 const ROLES_DISPLAY = {
   ADMIN:   { label: 'Admin',     color: 'bg-[#e8592e]/15 text-[#f2894f]' },
@@ -103,7 +104,7 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'USUARIO' },
   }
 
   async function eliminarConversacion(c) {
-    if (!confirm(`¿Borrar la conversación «${c.titulo}»?`)) return
+    if (!(await confirmar(`¿Borrar la conversación «${c.titulo}»?`))) return
     try {
       await borrarConversacion(c.id)
       setConversaciones(prev => prev.filter(x => x.id !== c.id))
@@ -354,12 +355,19 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'USUARIO' },
             {!hayConversacion ? (
               /* Pantalla de bienvenida */
               <div className="h-full flex flex-col items-center justify-center text-center px-4">
+                {/* Saludo de Juliette al entrar al chat */}
+                <div className="relative bg-[#141417] border border-[#e8592e]/40 rounded-2xl px-4 py-2.5 mb-3 max-w-xs
+                                font-body text-sm text-[#f4f4f5] shadow-lg">
+                  ¡Hola, {usuario.nombre.split(' ')[0]}! Preguntá con confianza, estoy aquí para ayudarte.
+                  <span className="absolute left-1/2 -bottom-1.5 w-3 h-3 -translate-x-1/2 rotate-45
+                                   bg-[#141417] border-r border-b border-[#e8592e]/40" />
+                </div>
                 <Juliette size={130} mirar titulo="Juliette te saluda" />
                 <h1 className="font-display text-2xl md:text-3xl font-semibold mt-4 mb-2 tracking-tight">
                   Preguntale a Juliette
                 </h1>
                 <p className="font-body text-sm text-[#8b8b93] mb-8">
-                  ¡Hola, {usuario.nombre.split(' ')[0]}! Podés preguntarme sobre horarios, mesas de examen, el calendario y trámites.
+                  Podés preguntarme sobre horarios, mesas de examen, el calendario y trámites.
                 </p>
                 <div className="flex flex-col gap-2.5 w-full max-w-md">
                   {PREGUNTAS_EJEMPLO.map(p => (

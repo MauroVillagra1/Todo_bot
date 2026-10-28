@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.ingest.horarios import normalizar
 from app.models.mesa import MesaFecha, MesaMateria
+from app.rag.calendario import alcance_pedido
 from app.rag.fechas import MESES, anio_del_mes, dia, hoy_argentina, mes_mencionado
 from app.rag.horarios import (
     DIAS, PALABRAS_HORARIO, RUIDO, VACIAS, _ES_ROMANO, _coincide, _tokens, bonito, materias_que_coinciden,
@@ -44,6 +45,8 @@ _GENERICAS = PALABRAS_MESA | {
     "mes", "este", "esta", "va", "sera", "seran", "cuando", "donde", "sede", "anexo", "concepcion", "central",
     "casa", "isi", "sistemas", "ingenieria", "rendir", *[normalizar(m) for m in MESES], "setiembre",
     "profesor", "profesores", "profesora", "docente", "docentes", "me", "nos", "integrantes", "miembros",
+    "todos", "todas", "todo", "lista", "listado", "listame", "listar", "completo", "completa", "pasaron",
+    "pasados", "pasadas", "paso", "anteriores", "hubo", "fueron", "ano", "cuantos", "cuantas", "ya",
 }
 MAX_FECHAS = 3
 
@@ -78,13 +81,21 @@ def _linea_fecha(f: MesaFecha, hoy: date, con_mesa: bool = False) -> str:
     quien = f"Mesa {_romano(f.mesa)} — " if con_mesa else ""
     turno = f"{f.turno}º turno: " if f.turno else ""
     texto = f"- {quien}{turno}examen el **{dia(f.fecha_examen)}** · inscripción hasta el {dia(f.cierre_inscripcion)}"
-    if f.cierre_inscripcion < hoy <= f.fecha_examen:
+    if f.fecha_examen < hoy:
+        texto += " _(ya pasó)_"
+    elif f.cierre_inscripcion < hoy:
         texto += " _(inscripción cerrada)_"
     return texto
 
 
-def _proximas(fechas: list[MesaFecha], mesa: int, hoy: date) -> list[MesaFecha]:
-    return [f for f in fechas if f.mesa == mesa and f.fecha_examen >= hoy][:MAX_FECHAS]
+def _proximas(fechas: list[MesaFecha], mesa: int, hoy: date, alcance: str | None = None) -> list[MesaFecha]:
+    """Las próximas MAX_FECHAS; con "todos" todas las del ciclo y con "pasados" las que ya fueron."""
+    de_la_mesa = [f for f in fechas if f.mesa == mesa]
+    if alcance == "todos":
+        return de_la_mesa
+    if alcance == "pasados":
+        return [f for f in de_la_mesa if f.fecha_examen < hoy]
+    return [f for f in de_la_mesa if f.fecha_examen >= hoy][:MAX_FECHAS]
 
 
 def _tribunal(t: MesaMateria) -> str:
@@ -132,6 +143,7 @@ def responder_mesa(db: Session, pregunta: str, hoy: date | None = None) -> dict 
         return None
     mesa = _mesa_pedida(n)
     mes = mes_mencionado(pregunta)
+    alcance = alcance_pedido(n)
     catalogo = {m for (m,) in db.query(MesaMateria.materia_norm).distinct()}
     materias = materias_que_coinciden(catalogo, pregunta)
     # "Química Orgánica Avanzada" no es "Química": la materia tiene que cubrir lo que nombra la pregunta
@@ -149,22 +161,22 @@ def responder_mesa(db: Session, pregunta: str, hoy: date | None = None) -> dict 
     personas = _personas(db, pregunta) if not materias else []
 
     if materias:
-        return _por_materia(db, materias, fechas, hoy, tribunal_primero=pide_tribunal)
+        return _por_materia(db, materias, fechas, hoy, tribunal_primero=pide_tribunal, alcance=alcance)
     if personas:
         return _por_persona(db, personas)
     if mesa:
-        return _por_mesa(db, mesa, fechas, hoy)
+        return _por_mesa(db, mesa, fechas, hoy, alcance)
     if mes:
         return _por_mes(mes, fechas, hoy)
     if resto and pide_tribunal:
         return _sin_materia(db, resto, varias=len(candidatas) > 3)
     if resto:
         return None  # nombra algo que no está en las mesas (otra carrera, un parcial…): sigue el RAG
-    return _proximas_mesas(fechas, hoy)
+    return _proximas_mesas(fechas, hoy, alcance)
 
 
 def _por_materia(db: Session, materias: list[str], fechas: list[MesaFecha], hoy: date,
-                 tribunal_primero: bool = False) -> dict:
+                 tribunal_primero: bool = False, alcance: str | None = None) -> dict:
     filas = db.query(MesaMateria).filter(MesaMateria.materia_norm.in_(materias)).all()
     por_materia: dict[str, list[MesaMateria]] = defaultdict(list)
     for f in filas:
@@ -175,9 +187,11 @@ def _por_materia(db: Session, materias: list[str], fechas: list[MesaFecha], hoy:
         grupo = sorted(por_materia[norma], key=lambda t: (t.sede != "Casa Central", t.sede))
         mesa = grupo[0].mesa
         lineas.append(f"**{bonito(grupo[0].materia)}** se rinde en la **Mesa {_romano(mesa)}** [1].")
-        proximas = _proximas(fechas, mesa, hoy)
-        bloque_fechas = (["Próximas fechas:", *[_linea_fecha(f, hoy) for f in proximas]] if proximas
-                         else ["No hay más fechas cargadas para esta mesa en el ciclo lectivo."])
+        proximas = _proximas(fechas, mesa, hoy, alcance)
+        rotulo = {"todos": "Todas las fechas del ciclo:", "pasados": "Fechas que ya pasaron:"}.get(alcance, "Próximas fechas:")
+        vacio = ("Todavía no pasó ninguna fecha de esta mesa." if alcance == "pasados"
+                 else "No hay más fechas cargadas para esta mesa en el ciclo lectivo.")
+        bloque_fechas = [rotulo, *[_linea_fecha(f, hoy) for f in proximas]] if proximas else [vacio]
         # Cargados desde el panel puede faltar el año del listado: igual se muestran
         tribunales = [t for t in grupo if t.presidente or t.vocal1 or t.vocal2]
         if tribunales:
@@ -221,12 +235,13 @@ def _por_persona(db: Session, personas: list[str]) -> dict:
     return _salida(lineas, con_tribunal=True)
 
 
-def _por_mesa(db: Session, mesa: int, fechas: list[MesaFecha], hoy: date) -> dict:
+def _por_mesa(db: Session, mesa: int, fechas: list[MesaFecha], hoy: date, alcance: str | None = None) -> dict:
     nombres = sorted({bonito(m) for (m,) in db.query(MesaMateria.materia).filter(MesaMateria.mesa == mesa)})
     lineas = [f"Materias que se rinden en la **Mesa {_romano(mesa)}** [2]:", *[f"- {m}" for m in nombres], ""]
-    proximas = _proximas(fechas, mesa, hoy)
+    proximas = _proximas(fechas, mesa, hoy, alcance)
     if proximas:
-        lineas += ["Próximas fechas [1]:", *[_linea_fecha(f, hoy) for f in proximas]]
+        rotulo = {"todos": "Todas las fechas del ciclo", "pasados": "Fechas que ya pasaron"}.get(alcance, "Próximas fechas")
+        lineas += [f"{rotulo} [1]:", *[_linea_fecha(f, hoy) for f in proximas]]
     return _salida(lineas, con_tribunal=True)
 
 
@@ -240,7 +255,13 @@ def _por_mes(mes: int, fechas: list[MesaFecha], hoy: date) -> dict:
     return _salida(lineas)
 
 
-def _proximas_mesas(fechas: list[MesaFecha], hoy: date) -> dict:
+def _proximas_mesas(fechas: list[MesaFecha], hoy: date, alcance: str | None = None) -> dict:
+    if alcance:  # "todas las mesas" / "las mesas que ya pasaron"
+        elegidas = fechas if alcance == "todos" else [f for f in fechas if f.fecha_examen < hoy]
+        titulo = "Todas las mesas de examen final del ciclo" if alcance == "todos" else "Mesas de examen final que ya pasaron"
+        if not elegidas:
+            return _salida([f"{titulo}: todavía no hay ninguna [1]."])
+        return _salida([f"{titulo} [1]:", *[_linea_fecha(f, hoy, con_mesa=True) for f in elegidas]])
     lineas = ["Próximas mesas de examen final [1]:"]
     for mesa in (1, 2, 3):
         lineas += [_linea_fecha(f, hoy, con_mesa=True) for f in _proximas(fechas, mesa, hoy)[:2]]

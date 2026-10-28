@@ -1,4 +1,5 @@
 /** Estilos y utilidades compartidos por el panel y las vistas de formularios. */
+import Swal from 'sweetalert2'
 
 export const campo = 'w-full bg-[#141417] border border-[#232327] rounded-xl px-3 py-2 text-sm text-[#f4f4f5] placeholder-[#4b4b53] focus:outline-none focus:border-[#e8592e]/50 transition-colors'
 export const tarjeta = 'bg-[#0d0d10] border border-[#1e1e22] rounded-2xl p-5'
@@ -13,4 +14,20 @@ export function errorDe(err, porDefecto) {
   if (typeof detalle === 'string') return detalle
   if (Array.isArray(detalle)) return detalle.map(d => d.msg).join(' · ')
   return porDefecto
+}
+
+// ── Diálogos (SweetAlert2) con los colores de la app, en lugar de confirm() del navegador ──
+
+const TEMA = {
+  background: '#0d0d10', color: '#f4f4f5', confirmButtonColor: '#e8592e', cancelButtonColor: '#232327',
+  customClass: { popup: 'rounded-2xl border border-[#232327]' },
+}
+
+/** Pide confirmación; devuelve true si la persona aceptó. */
+export async function confirmar(texto, { titulo = '¿Estás seguro?', boton = 'Sí, borrar', icono = 'warning' } = {}) {
+  const r = await Swal.fire({
+    ...TEMA, title: titulo, text: texto, icon: icono, showCancelButton: true,
+    confirmButtonText: boton, cancelButtonText: 'Cancelar', reverseButtons: true, focusCancel: true,
+  })
+  return r.isConfirmed
 }

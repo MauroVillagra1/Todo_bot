@@ -19,7 +19,7 @@ import {
 import Calendario from './Calendario'
 import GrillaHorarios from './GrillaHorarios'
 import GrillaMesas from './GrillaMesas'
-import { boton, campo, errorDe, fechaHora, tarjeta } from './ui'
+import { boton, campo, errorDe, fechaHora, tarjeta, confirmar } from './ui'
 
 // ── Resumen ───────────────────────────────────────────────────────────────────
 
@@ -310,7 +310,8 @@ function ListaParos({ version }) {
   useEffect(() => { listarParos().then(setLista).catch(e => setError(errorDe(e, 'No se pudieron cargar los paros.'))) }, [version])
 
   async function baja(p) {
-    if (!confirm(`¿Dar de baja «${p.titulo}»? Deja de mostrarse y el chat no lo responde más.`)) return
+    if (!(await confirmar('Deja de mostrarse arriba del chat y el chat no lo responde más.',
+                          { titulo: `¿Dar de baja «${p.titulo}»?`, boton: 'Sí, dar de baja' }))) return
     try {
       await darDeBajaInformacion(p.informacion_id)
       setLista(prev => ({ ...prev, proximos: prev.proximos.filter(x => x.informacion_id !== p.informacion_id) }))
@@ -733,7 +734,8 @@ function FilaCambio({ c, onDeshecho }) {
   const [accion, color] = ACCIONES[c.accion] ?? [c.accion, 'bg-[#1e1e22] text-[#a1a1aa]']
 
   async function deshacer() {
-    if (!confirm(`¿Deshacer este cambio?\n${c.seccion}: ${c.resumen}`)) return
+    if (!(await confirmar(`${c.seccion}: ${c.resumen}`,
+                          { titulo: '¿Deshacer este cambio?', boton: 'Sí, deshacer', icono: 'question' }))) return
     setEnviando(true)
     setError(null)
     try { onDeshecho(c.id, await deshacerCambio(c.id)) }

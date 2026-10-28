@@ -6,6 +6,7 @@ Respuestas del calendario académico con SQL, sin LLM.
   "¿Cuándo empieza el segundo cuatrimestre?" / "¿Cuándo son las vacaciones de invierno?"
   "¿Hasta cuándo presento la nota de cambio de comisión?" / "¿Cuándo es la prueba de suficiencia de inglés?"
   "¿Qué hay en el calendario en agosto?"
+  "Listame todos los feriados" / "¿Qué feriados ya pasaron?" / "Todo el calendario" → lista completa o lo pasado
 """
 import re
 from datetime import date, timedelta
@@ -20,6 +21,22 @@ from app.rag.fechas import MESES, anio_del_mes, dia, fecha_mencionada, hoy_argen
 from app.services.avisos import paros
 
 MAX_EVENTOS = 12
+MAX_LISTADO = 60  # "todos los feriados", "todo el calendario"
+# "Todos", "listame", "del año": la lista completa. "Ya pasaron", "anteriores": solo lo pasado.
+_RE_PASADOS = re.compile(r"\b(ya pasaron|ya paso|ya fueron|pasados|pasadas|pasaron|anteriores|que hubo|hubo)\b")
+_RE_TODOS = re.compile(r"\b(todos|todas|todo|lista|listado|listame|listar|lista de|completo|completa|"
+                       r"del ano|de este ano|este ano|en el ano|cuantos|cuantas)\b")
+
+
+def alcance_pedido(n: str) -> str | None:
+    """Devuelve "pasados", "todos" o None (lo de siempre: lo próximo) según la pregunta normalizada."""
+    if _RE_PASADOS.search(n):
+        return "pasados"
+    if _RE_TODOS.search(n):
+        return "todos"
+    return None
+
+
 _VERBOS_INICIO_FIN = r"(empieza|empiezan|empieza|inicia|inician|inicio|comienza|comienzan|comienzo|arranca|arrancan|" \
                      r"termina|terminan|fin|finaliza|finalizan|finalizacion|cuando|dura)"
 _NOTAS = r"(nota|notas|cambio de comision|ampliacion de cupo|fuera de termino|cambio de plan|baja de regularidad|" \
@@ -62,6 +79,12 @@ def responder_calendario(db: Session, pregunta: str, hoy: date | None = None) ->
     if not eventos:
         return None
     mes = mes_mencionado(pregunta)
+    alcance = alcance_pedido(n)
+    if alcance == "pasados":
+        eventos = [e for e in eventos if e.hasta() < hoy]
+
+    def _lista(elegidos, hoy, mes, titulo, proximos=0):
+        return _listar(elegidos, hoy, mes, titulo, 0 if alcance else proximos, alcance)
 
     if palabras & {"feriado", "feriados", "asueto", "asuetos", "laborable", "laborables", "finde", "puente"}:
         elegidos = [e for e in eventos if e.categoria in ("FERIADO", "ASUETO")]
@@ -96,12 +119,15 @@ def responder_calendario(db: Session, pregunta: str, hoy: date | None = None) ->
         return _lista([e for e in eventos if "planillas" in normalizar(e.actividad)], hoy, None,
                       "Presentación de planillas de regularidad")
     if "calendario" in palabras or (mes and re.search(r"\b(que hay|actividades|fechas importantes|eventos)\b", n)):
-        return _mes_o_proximos(db, eventos, hoy, mes)
+        return _mes_o_proximos(db, eventos, hoy, mes, alcance)
     return None
 
 
-def _lista(elegidos: list[EventoCalendario], hoy: date, mes: int | None, titulo: str, proximos: int = 0) -> dict | None:
+def _listar(elegidos: list[EventoCalendario], hoy: date, mes: int | None, titulo: str, proximos: int = 0,
+            alcance: str | None = None) -> dict | None:
     if not elegidos:
+        if alcance == "pasados":
+            return _salida([f"Todavía no pasó ninguna fecha de {titulo.lower()} según el calendario académico [1]."])
         return None
     if mes:
         anio = anio_del_mes(mes, hoy, {(e.fecha_inicio.year, e.fecha_inicio.month) for e in elegidos})
@@ -113,7 +139,12 @@ def _lista(elegidos: list[EventoCalendario], hoy: date, mes: int | None, titulo:
         futuros = [e for e in elegidos if e.hasta() >= hoy]
         elegidos = futuros[:proximos] or elegidos[-proximos:]
         titulo = f"Próximos {titulo.lower()}"
-    lineas = [f"{titulo}, según el calendario académico 2026 [1]:", *[_linea(e, hoy) for e in elegidos[:MAX_EVENTOS]]]
+    if alcance == "pasados":
+        titulo += " que ya pasaron"
+    limite = MAX_LISTADO if alcance else MAX_EVENTOS
+    lineas = [f"{titulo}, según el calendario académico 2026 [1]:", *[_linea(e, hoy) for e in elegidos[:limite]]]
+    if len(elegidos) > limite:
+        lineas.append(f"_…y {len(elegidos) - limite} más: preguntá por un mes para ver el resto._")
     return _salida(lineas)
 
 
@@ -125,7 +156,7 @@ def _notas(eventos: list[EventoCalendario], n: str, hoy: date) -> dict | None:
         if tramite in n:
             notas = [e for e in notas if tramite in normalizar(e.actividad)] or notas
             break
-    respuesta = _lista(notas, hoy, None, "Plazos para presentar notas")
+    respuesta = _listar(notas, hoy, None, "Plazos para presentar notas")
     if respuesta:
         respuesta["respuesta"] += ("\n\n📄 Los modelos de nota (cambio de comisión, ampliación de cupo, "
                                    "inscripción fuera de término, cambio de plan, recursado) se descargan en **Documentos**, en el menú.")
@@ -140,10 +171,11 @@ def _clases(eventos: list[EventoCalendario], n: str, hoy: date) -> dict | None:
         clases = [e for e in clases if "2º" in e.actividad]
     if re.search(r"\b(ciclo|periodo) lectivo\b", n):
         clases = [e for e in eventos if "lectivo" in normalizar(e.actividad)] + clases
-    return _lista(clases, hoy, None, "Fechas de clases")
+    return _listar(clases, hoy, None, "Fechas de clases")
 
 
-def _mes_o_proximos(db: Session, eventos: list[EventoCalendario], hoy: date, mes: int | None) -> dict:
+def _mes_o_proximos(db: Session, eventos: list[EventoCalendario], hoy: date, mes: int | None,
+                    alcance: str | None = None) -> dict:
     mesas = db.query(MesaFecha).order_by(MesaFecha.fecha_examen, MesaFecha.mesa).all()
     if mes:
         anio = anio_del_mes(mes, hoy, {(e.fecha_inicio.year, e.fecha_inicio.month) for e in eventos})
@@ -151,6 +183,11 @@ def _mes_o_proximos(db: Session, eventos: list[EventoCalendario], hoy: date, mes
                     or (e.fecha_inicio < date(anio, mes, 1) <= e.hasta())]
         examenes = [m for m in mesas if (m.fecha_examen.year, m.fecha_examen.month) == (anio, mes)]
         titulo = f"Calendario académico de **{MESES[mes - 1]} {anio}** [1]:"
+    elif alcance:  # "todo el calendario" / "lo que ya pasó" (eventos ya viene filtrado si son los pasados)
+        elegidos = eventos[:MAX_LISTADO]
+        examenes = [m for m in mesas if alcance == "todos" or m.fecha_examen < hoy]
+        titulo = ("Fechas del calendario académico que ya pasaron [1]:" if alcance == "pasados"
+                  else "Calendario académico completo [1]:")
     else:
         elegidos = [e for e in eventos if e.hasta() >= hoy][:8]
         hasta = elegidos[-1].hasta() if elegidos else hoy

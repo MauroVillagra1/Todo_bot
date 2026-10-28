@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { actualizarEvento, borrarEvento, crearEvento, listarCalendario, listarMesasFechas } from '../api'
 import { Celda, celda } from './GrillaHorarios'
-import { boton, campo, errorDe, tarjeta } from './ui'
+import { boton, campo, errorDe, tarjeta, confirmar } from './ui'
 
 export const CATEGORIAS = {
   CLASES: ['Clases', 'bg-emerald-500/15 text-emerald-400'],
@@ -43,7 +43,7 @@ function FilaEditable({ e, onCambio, onBorrado, setError }) {
     catch (err) { setError(errorDe(err, 'No se pudo guardar')); throw err }
   }
   async function borrar() {
-    if (!confirm(`¿Borrar «${e.actividad}»?`)) return
+    if (!(await confirmar(`¿Borrar «${e.actividad}»?`))) return
     try { await borrarEvento(e.id); onBorrado(e.id) }
     catch (err) { setError(errorDe(err, 'No se pudo borrar')) }
   }

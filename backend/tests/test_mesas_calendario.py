@@ -223,3 +223,23 @@ def test_que_es_un_seguimiento():
         assert es_seguimiento(p), p
     for p in ("¿Hay becas abiertas?", "¿Cuándo rindo Sistemas Operativos?", "¿Qué materias tengo los lunes en la 1K01?"):
         assert not es_seguimiento(p), p
+
+
+# ── Listas completas y lo que ya pasó ─────────────────────────────────────────
+
+def test_feriados_proximos_todos_o_los_que_pasaron(db, datos):
+    proximos = responder_calendario(db, "¿Qué feriados hay?", hoy=HOY)["respuesta"]
+    assert proximos.startswith("Próximos feriados") and "24/03/2026" not in proximos
+    todos = responder_calendario(db, "listame todos los feriados", hoy=HOY)["respuesta"]
+    assert "24/03/2026" in todos and "_(ya pasó)_" in todos and "23/11/2026" in todos
+    pasados = responder_calendario(db, "¿qué feriados ya pasaron?", hoy=HOY)["respuesta"]
+    assert "que ya pasaron" in pasados and "24/03/2026" in pasados and "23/11/2026" not in pasados
+
+
+def test_todo_el_calendario_y_mesas_que_ya_pasaron(db, datos):
+    completo = responder_calendario(db, "mostrame todo el calendario", hoy=HOY)["respuesta"]
+    assert completo.startswith("Calendario académico completo") and "09/03/2026" in completo
+    mesas = responder_mesa(db, "¿qué mesas de examen ya pasaron?", hoy=HOY)["respuesta"]
+    assert "11/05/2026" in mesas and "_(ya pasó)_" in mesas and "27/11/2026" not in mesas
+    so = responder_mesa(db, "todas las fechas del final de Sistemas Operativos", hoy=HOY)["respuesta"]
+    assert "Todas las fechas del ciclo:" in so and "_(ya pasó)_" in so and "27/11/2026" in so

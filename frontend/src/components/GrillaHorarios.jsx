@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { actualizarBloque, borrarBloque, crearBloque, listarHorarios } from '../api'
-import { boton, campo, errorDe, tarjeta } from './ui'
+import { boton, campo, errorDe, tarjeta, confirmar } from './ui'
 
 const DIAS = { 1: 'Lunes', 2: 'Martes', 3: 'Miércoles', 4: 'Jueves', 5: 'Viernes', 6: 'Sábado' }
 const PERIODOS = ['Anual', 'Primer cuatrimestre', 'Segundo cuatrimestre']
@@ -33,7 +33,7 @@ function FilaBloque({ b, onCambio, onBorrado, setError }) {
     catch (err) { setError(errorDe(err, 'No se pudo guardar')); throw err }
   }
   async function borrar() {
-    if (!confirm(`¿Borrar ${b.materia} (${DIAS[b.dia]} ${b.inicio})?`)) return
+    if (!(await confirmar(`¿Borrar ${b.materia} (${DIAS[b.dia]} ${b.inicio})?`))) return
     try { await borrarBloque(b.id); onBorrado(b.id) }
     catch (err) { setError(errorDe(err, 'No se pudo borrar')) }
   }
