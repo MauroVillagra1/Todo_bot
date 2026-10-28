@@ -27,10 +27,11 @@ Modo Apify (recomendado: corre en GitHub Actions, sin la PC local):
 Usa el actor "Instagram Post Scraper" de Apify con el token de la variable APIFY_TOKEN
 (sin token la fuente no trae nada y no falla). Trae solo publicaciones (no historias), solo el
 texto (caption), de la más nueva a la más vieja: la primera vez MAX_POSTS_PRIMERA_VEZ y después
-lo publicado desde la última revisión. Las publicaciones sin texto se saltean.
+lo publicado desde la última revisión. Si una publicación no tiene descripción, se lee el texto
+del flyer con Gemini (services/flyers.py; hasta MAX_FLYERS_POR_CORRIDA). Todas se guardan con el
+link de la publicación en el texto, para que el chat lo muestre.
 
-Limitación: se lee el texto del posteo (caption); el texto dentro de las
-imágenes no, porque requeriría OCR.
+Limitación (API oficial e Instaloader): se lee el texto del posteo (caption), no el de las imágenes.
 """
 import html
 import os
@@ -44,6 +45,7 @@ from app.ingest.sources.base import USER_AGENT, ItemCrudo, Source
 API = "https://graph.instagram.com/v23.0"
 APIFY_ACTOR = "https://api.apify.com/v2/acts/apify~instagram-post-scraper/run-sync-get-dataset-items"
 APIFY_TIMEOUT = 300  # segundos: el actor corre y devuelve los posts en la misma llamada
+MAX_FLYERS_POR_CORRIDA = 30  # posts sin descripción leídos con IA por cuenta y corrida (cupo de Gemini)
 MAX_PAGINAS = 20
 
 
@@ -52,13 +54,16 @@ def _fecha(valor: str) -> datetime:
     return datetime.strptime(valor, "%Y-%m-%dT%H:%M:%S%z")
 
 
-def _item(id_media: str, permalink: str, caption: str, fecha: datetime) -> ItemCrudo:
+def _item(id_media: str, permalink: str, caption: str, fecha: datetime, con_link: bool = False) -> ItemCrudo:
     caption = caption.strip()
+    contenido = f"<p>{html.escape(caption)}</p>".replace("\n", "<br>")
+    if con_link:  # el chat puede citar la publicación con su link
+        contenido += f"<p>Publicación de Instagram: {html.escape(permalink)}</p>"
     return ItemCrudo(
         id_externo=f"ig:{id_media}",
         url=permalink,
         titulo=(caption.splitlines() or ["Publicación de Instagram"])[0][:150],
-        contenido_html=f"<p>{html.escape(caption)}</p>".replace("\n", "<br>"),
+        contenido_html=contenido,
         fecha_publicacion=fecha,
         fecha_modificacion=fecha,
     )
@@ -121,15 +126,30 @@ class InstagramSource(Source):
             resp = client.post(APIFY_ACTOR, params={"token": token}, json=entrada)
             resp.raise_for_status()
             posts = resp.json()
+        flyers = 0
         for post in posts:
-            caption = (post.get("caption") or "").strip()
-            if not caption or not post.get("timestamp") or post.get("error"):
-                continue  # sin texto no aporta (los flyers no se leen)
+            if not post.get("timestamp") or post.get("error"):
+                continue
             fecha = datetime.fromisoformat(post["timestamp"].replace("Z", "+00:00"))
             if desde and fecha <= desde:
                 continue
+            caption = (post.get("caption") or "").strip()
+            if not caption:  # sin descripción: se lee el flyer (solo estas)
+                imagen = post.get("displayUrl") or next(iter(post.get("images") or []), None)
+                if not imagen or flyers >= MAX_FLYERS_POR_CORRIDA:
+                    continue
+                flyers += 1
+                caption = self.leer_flyer(imagen) or ""
+                if not caption:
+                    continue  # la imagen no tiene texto informativo
             url = post.get("url") or f"https://www.instagram.com/p/{post.get('shortCode')}/"
-            yield _item(str(post.get("id") or post.get("shortCode")), url, caption, fecha)
+            yield _item(str(post.get("id") or post.get("shortCode")), url, caption, fecha, con_link=True)
+
+    @staticmethod
+    def leer_flyer(url_imagen: str) -> str | None:
+        """Texto del flyer con IA (los tests lo reemplazan)."""
+        from app.services.flyers import leer_flyer
+        return leer_flyer(url_imagen)
 
     def posts_instaloader(self, usuario: str) -> Iterator:
         """Posts del perfil, del más nuevo al más viejo (los tests lo reemplazan)."""

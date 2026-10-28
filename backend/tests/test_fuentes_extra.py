@@ -242,7 +242,7 @@ def test_apify_sin_token_no_trae_nada_ni_falla(monkeypatch):
     assert list(InstagramSource(_fuente_ig_apify()).obtener_cambios(None)) == []
 
 
-def test_apify_trae_el_texto_de_lo_nuevo_y_saltea_posts_sin_texto(monkeypatch):
+def test_apify_trae_lo_nuevo_y_lee_el_flyer_solo_si_no_hay_descripcion(monkeypatch):
     from datetime import datetime, timezone
     monkeypatch.setenv("APIFY_TOKEN", "tok")
     pedidos = []
@@ -253,13 +253,22 @@ def test_apify_trae_el_texto_de_lo_nuevo_y_saltea_posts_sin_texto(monkeypatch):
         return httpx.Response(200, json=[
             {"id": "3", "shortCode": "C3", "url": "https://www.instagram.com/p/C3/", "timestamp": "2026-10-27T15:00:00.000Z",
              "caption": "Becas de comedor\nInscripciones hasta el 5/11 en la SAE"},
-            {"id": "2", "shortCode": "C2", "timestamp": "2026-10-26T15:00:00.000Z", "caption": ""},  # flyer sin texto
+            {"id": "2", "shortCode": "C2", "timestamp": "2026-10-26T15:00:00.000Z", "caption": "",  # solo flyer
+             "displayUrl": "https://cdn/flyer.jpg"},
+            {"id": "4", "shortCode": "C4", "timestamp": "2026-10-26T12:00:00.000Z", "caption": "",  # foto sin texto
+             "displayUrl": "https://cdn/foto.jpg"},
             {"id": "1", "shortCode": "C1", "timestamp": "2026-10-20T15:00:00.000Z", "caption": "Viejo"},
         ])
 
     src = InstagramSource(_fuente_ig_apify())
     src.transport = httpx.MockTransport(responder)
+    leidos = []
+    src.leer_flyer = lambda url: leidos.append(url) or ("Charla de IA\nJueves 30/10, 18 h, SUM" if "flyer" in url else None)
     items = list(src.obtener_cambios(datetime(2026, 10, 25, tzinfo=timezone.utc)))
     assert pedidos == [("tok", {"username": ["sae.frt.ofc"], "resultsLimit": 30, "onlyPostsNewerThan": "2026-10-25"})]
+    # Solo los posts sin descripción pasan por la IA; la foto sin texto no se carga
+    assert leidos == ["https://cdn/flyer.jpg", "https://cdn/foto.jpg"]
     assert [(i.id_externo, i.titulo, i.url) for i in items] == [
-        ("ig:3", "Becas de comedor", "https://www.instagram.com/p/C3/")]
+        ("ig:3", "Becas de comedor", "https://www.instagram.com/p/C3/"),
+        ("ig:2", "Charla de IA", "https://www.instagram.com/p/C2/")]
+    assert all(f"Publicación de Instagram: {i.url}" in i.contenido_html for i in items)
