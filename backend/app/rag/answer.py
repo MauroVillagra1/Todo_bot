@@ -51,6 +51,8 @@ Reglas:
   más cercana que sea hoy o posterior, y no presentes como futuras las fechas que ya pasaron.
 - Las fechas marcadas "(ya pasó)" son anteriores a hoy: si es el cierre de una inscripción,
   convocatoria o postulación, decí que ya cerró ese día (aunque la fuente figure vigente).
+- Si hay mensajes anteriores en la conversación, usalos solo para entender a qué se refiere la
+  pregunta actual ("¿y cuándo cierra?", "¿quién la da?"); los datos salen igual del CONTEXTO.
 - Respondé en español, breve (máximo 5 oraciones o una lista corta), sin tablas."""
 
 # De mejor a peor: el estado de la respuesta es el peor entre sus fuentes
@@ -219,12 +221,16 @@ def _responder_sin_cache(db: Session, pregunta: str, historial: list[dict], ante
         incrementar(db, "conversacion")
         return charla
 
-    # Calendario académico ("¿hay clases mañana?", feriados, cuatrimestres) y mesas de examen: SQL, sin LLM
-    calendario = responder_calendario(db, pregunta)
+    # Calendario académico ("¿hay clases mañana?", feriados, cuatrimestres) y mesas de examen: SQL, sin LLM.
+    # Seguimientos: "¿y el lunes?" después de "¿hay clases mañana?", "¿y Física?" después de una mesa.
+    calendario = responder_calendario(db, pregunta) or (
+        anterior and responder_calendario(db, anterior) and _es_del_dia(anterior)
+        and responder_calendario(db, f"hay clases {pregunta}"))
     if calendario:
         incrementar(db, "consultas_calendario_sql")
         return calendario
-    mesa = responder_mesa(db, pregunta)
+    mesa = responder_mesa(db, pregunta) or (
+        anterior and responder_mesa(db, anterior) and responder_mesa(db, f"final de {pregunta}"))
     if mesa:
         incrementar(db, "consultas_mesas_sql")
         return mesa
@@ -236,6 +242,10 @@ def _responder_sin_cache(db: Session, pregunta: str, historial: list[dict], ante
         return horario
 
     return _buscar_y_responder(db, pregunta, historial, anterior, [])
+
+
+def _es_del_dia(pregunta: str) -> bool:
+    return bool(re.search(r"\b(hay clases?|abre|abierta|cerrada|feriado|paro)\b", normalizar(pregunta)))
 
 
 def _buscar_y_responder(db: Session, pregunta: str, historial: list[dict], anterior: str,

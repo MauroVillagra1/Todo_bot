@@ -123,14 +123,20 @@ def test_cache_se_invalida_si_cambian_los_datos(client, crear_usuario, rag, db):
     assert len(llamadas["llm"]) == 2
 
 
-def test_cada_pregunta_se_responde_sola_aunque_sea_la_misma_conversacion(client, crear_usuario, rag):
+def test_el_chat_guarda_contexto_solo_para_los_seguimientos(client, crear_usuario, rag):
     llamadas, _ = rag
     u = crear_usuario("u@alu.frt.utn.edu.ar")
-    conv = _preguntar(client, u, "¿Mesas de diciembre?")["conversacion_id"]
-    _preguntar(client, u, "¿Becas abiertas?", conv)
+    conv = _preguntar(client, u, "¿Inscripción a la beca de transporte?")["conversacion_id"]
 
-    assert llamadas["busquedas"][-1] == "¿Becas abiertas?"  # sin la pregunta anterior
-    assert [m["role"] for m in llamadas["llm"][-1]] == ["system", "user"]  # sin historial
+    # Cambio de tema: se responde sola (sin mezclar con lo anterior)
+    _preguntar(client, u, "¿Becas abiertas?", conv)
+    assert llamadas["busquedas"][-1] == "¿Becas abiertas?"
+    assert [m["role"] for m in llamadas["llm"][-1]] == ["system", "user"]
+
+    # Seguimiento: usa la conversación para entender a qué se refiere
+    _preguntar(client, u, "¿y cuándo cierra?", conv)
+    assert "Becas abiertas" in llamadas["busquedas"][-2]
+    assert [m["role"] for m in llamadas["llm"][-1]] == ["system", "user", "assistant", "user", "assistant", "user"]
 
 
 def test_si_el_llm_falla_y_no_hay_frases_relevantes_muestra_evidencias(client, crear_usuario, rag):

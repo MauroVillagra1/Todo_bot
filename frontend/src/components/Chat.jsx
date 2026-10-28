@@ -225,7 +225,7 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
                      hover:border-[#e8592e]/40 hover:text-[#f2894f] transition-colors"
         >
           <Sparkles size={15} className="flex-shrink-0" />
-          <span className="hidden md:block">Nueva consulta</span>
+          <span className="hidden md:block">Nuevo chat</span>
         </button>
 
         {/* Nav: Chat y Sugerir para todos; Panel solo para staff */}
@@ -259,7 +259,7 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
         <div className="flex-1 min-h-0 overflow-y-auto chat-scroll px-3 hidden md:block">
           {conversaciones.length > 0 && (
             <>
-              <p className="text-[10px] uppercase tracking-wide text-[#4b4b53] font-body font-medium px-1 mb-1">Conversaciones</p>
+              <p className="text-[10px] uppercase tracking-wide text-[#4b4b53] font-body font-medium px-1 mb-1">Chats</p>
               <ul className="space-y-0.5">
                 {conversaciones.map(c => (
                   <li key={c.id} className="group flex items-center">

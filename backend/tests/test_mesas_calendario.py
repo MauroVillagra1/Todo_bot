@@ -7,6 +7,8 @@ from app.ingest.datos_calendario import eventos_iniciales
 from app.ingest.datos_mesas import FECHAS_2026, materias_iniciales
 from app.models.auditoria import RegistroCambios
 from app.models.cache import CacheRespuesta
+from app.models.chat import MensajeChat
+from app.models.horario import HorarioClase
 from app.models.calendario import EventoCalendario
 from app.models.informacion import Evidencia, Historial, Informacion, Verificacion
 from app.models.ingesta import Chunk, Documento, Fuente, Ingesta, Publicacion
@@ -24,7 +26,7 @@ HOY = date(2026, 10, 28)  # miércoles
 def datos(db):
     engine = db.get_bind()
     for m in (Fuente, Documento, Publicacion, Chunk, Ingesta, MetricaDiaria, Informacion, Evidencia,
-              Verificacion, Historial, RegistroCambios, CacheRespuesta):
+              Verificacion, Historial, RegistroCambios, CacheRespuesta, MensajeChat, HorarioClase):
         m.__table__.create(engine)
     db.add_all([MesaFecha(**f) for f in FECHAS_2026])
     db.add_all([MesaMateria(**m) for m in materias_iniciales()])
@@ -156,3 +158,37 @@ def test_mesas_y_calendario_solo_admin_editan(db, datos, client, crear_usuario):
     assert evento.status_code == 201
     assert client.delete(f"/api/v1/calendario/{evento.json()['id']}", headers=auth(admin)).status_code == 204
     assert db.query(RegistroCambios).count() == 3
+
+
+# ── Chat con contexto (como ChatGPT): seguimientos dentro del mismo chat ─────
+
+def _preguntar(client, usuario, mensaje, conv=None):
+    r = client.post("/api/v1/chat/", json={"mensaje": mensaje, "conversacion_id": conv}, headers=auth(usuario))
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_seguimiento_de_mesas_y_de_dias_en_el_mismo_chat(db, datos, client, crear_usuario, monkeypatch):
+    from app.rag import answer, calendario as cal, mesas
+    monkeypatch.setattr(answer, "buscar", lambda *a, **k: [])  # la búsqueda general es de Postgres
+    monkeypatch.setattr(mesas, "hoy_argentina", lambda: HOY)
+    monkeypatch.setattr(cal, "hoy_argentina", lambda: HOY)
+    u = crear_usuario("a@alu.frt.utn.edu.ar")
+    primera = _preguntar(client, u, "¿Cuándo rindo Sistemas Operativos?")
+    conv = primera["conversacion_id"]
+    seguimiento = _preguntar(client, u, "¿y Física?", conv)["respuesta"]
+    assert "**Física I** se rinde en la **Mesa I**" in seguimiento
+    # En un chat nuevo, "¿y Física?" no tiene a qué referirse
+    assert "Física I" not in _preguntar(client, u, "¿y Física?")["respuesta"]
+
+    dia = _preguntar(client, u, "¿hay clases mañana?")
+    assert "lunes" in _preguntar(client, u, "¿y el lunes?", dia["conversacion_id"])["respuesta"]
+    assert len(client.get("/api/v1/chat/conversaciones", headers=auth(u)).json()) == 3  # un chat = una entrada
+
+
+def test_que_es_un_seguimiento():
+    from app.services.chat_service import es_seguimiento
+    for p in ("¿y Física?", "¿Y cuándo cierra?", "¿quién la da?", "¿y el lunes?", "Física", "¿su tribunal?"):
+        assert es_seguimiento(p), p
+    for p in ("¿Hay becas abiertas?", "¿Cuándo rindo Sistemas Operativos?", "¿Qué materias tengo los lunes en la 1K01?"):
+        assert not es_seguimiento(p), p

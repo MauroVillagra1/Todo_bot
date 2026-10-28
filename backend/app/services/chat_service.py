@@ -3,6 +3,7 @@ Servicio de chat: límite por minuto, mensajes guardados y delegación al RAG.
 Los mensajes y el límite viven en Postgres (tabla mensajes_chat) porque en
 serverless (Vercel) no hay memoria compartida entre invocaciones.
 """
+import re
 import uuid
 from datetime import timedelta
 from typing import Optional
@@ -15,9 +16,19 @@ from app.models.chat import MensajeChat
 from app.models.informacion import Informacion
 from app.models.voto import MotivoVotoEnum, Voto, peso
 from app.models.usuario import Usuario
+from app.ingest.horarios import normalizar
 from app.rag.answer import responder
 
 settings = get_settings()
+
+TURNOS_HISTORIAL = 3      # pares pregunta/respuesta del mismo chat que se usan como contexto
+MAX_CARACTERES_TURNO = 1200
+# "¿y cuándo cierra?", "¿y Física?", "¿y el lunes?", "¿quién la da?": dependen de lo anterior
+_SEGUIMIENTO = re.compile(
+    r"^(y|e|o|pero|entonces|tambien|ademas|osea|o sea)\b|"
+    r"\b(eso|esa|ese|esto|esta misma|ella|ellos|ellas|el mismo|la misma|lo mismo|anterior|dicho|dicha|"
+    r"la otra|el otro|tambien|ahi|alli|su|sus|la da|lo da|la dicta|la toma|cierra|vence)\b"
+)
 
 class LimiteExcedido(Exception):
     """El usuario superó CHAT_MAX_POR_MINUTO."""
@@ -40,6 +51,23 @@ def verificar_limite(usuario: Usuario, db: Session) -> None:
         raise LimiteExcedido()
 
 
+def es_seguimiento(pregunta: str) -> bool:
+    """La pregunta se apoya en la anterior (pronombres, "y …", o es muy corta)."""
+    n = normalizar(pregunta).strip(" ¿?¡!.")
+    return bool(_SEGUIMIENTO.search(n)) or len(n.split()) == 1
+
+
+def _historial(db: Session, usuario: Usuario, conversacion_id: str) -> list[dict]:
+    mensajes = (
+        db.query(MensajeChat)
+        .filter(MensajeChat.conversacion_id == conversacion_id, MensajeChat.usuario_id == usuario.id)
+        .order_by(MensajeChat.id.desc())
+        .limit(TURNOS_HISTORIAL * 2)
+        .all()
+    )
+    return [{"role": m.rol, "content": m.contenido[:MAX_CARACTERES_TURNO]} for m in reversed(mensajes)]
+
+
 def responder_consulta(
     pregunta: str,
     usuario: Usuario,
@@ -47,9 +75,11 @@ def responder_consulta(
     conversacion_id: Optional[str] = None,
 ) -> dict:
     conv_id = conversacion_id or str(uuid.uuid4())
-    # Cada pregunta se responde sola: los mensajes anteriores de la conversación no se usan
-    # ("y de mecatrónica?" mezclaba temas). La conversación se guarda solo para mostrarla.
-    resultado = responder(db, pregunta, [])
+    # Cada chat guarda su contexto (como ChatGPT), pero solo se usa si la pregunta es un
+    # seguimiento: si cambia de tema se responde sola (antes "¿hay becas?" después de horarios
+    # mezclaba temas) y además puede salir de la caché.
+    historial = _historial(db, usuario, conv_id) if conversacion_id and es_seguimiento(pregunta) else []
+    resultado = responder(db, pregunta, historial)
 
     respuesta = _guardar_respuesta(db, usuario, conv_id, resultado, pregunta=pregunta)
     return {**resultado, "conversacion_id": conv_id, "mensaje_id": respuesta.id}
