@@ -13,6 +13,7 @@ import {
   confirmarRecuperacion, login, solicitarRecuperacion, solicitarRegistro, verificarRegistro,
 } from '../api'
 import fotoFacultad from '../assets/facultad-utn-frt.jpg'
+import JulietteEscena, { FRASES } from './JulietteEscena'
 
 const LOGO_URL = 'https://res.cloudinary.com/dol1ba0ld/image/upload/v1787954474/asd/Preguntale_a_UTNIA_xwocbf.png'
 const DOMINIOS = ['alu.frt.utn.edu.ar', 'doc.frt.utn.edu.ar']
@@ -303,6 +304,9 @@ export default function Login({ onLogin }) {
         <p className="absolute bottom-8 right-10 font-display text-lg font-semibold text-[#f4f4f5]/90 tracking-tight">
           UTN · Facultad Regional Tucumán
         </p>
+        {/* Juliette programando (en login, registro y recuperar contraseña) */}
+        <JulietteEscena escena="programando" mensajes={FRASES.login} size={210}
+                        className="flex absolute bottom-16 left-1/2 -translate-x-1/2" />
       </div>
     </div>
   )

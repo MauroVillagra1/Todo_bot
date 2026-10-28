@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Download, FileText, Trash2, Upload } from 'lucide-react'
 import { actualizarDocumento, borrarDocumento, listarDocumentos, subirDocumento, urlDocumento } from '../api'
 import { boton, campo, errorDe, tarjeta } from './ui'
+import JulietteEscena, { FRASES } from './JulietteEscena'
 
 const MAX_MB = 2
 
@@ -106,7 +107,8 @@ export default function Documentos({ esAdmin = false }) {
 
   return (
     <div className="h-full overflow-y-auto bg-[#0a0a0c] text-[#f4f4f5] font-body p-6">
-      <div className="max-w-3xl mx-auto space-y-6">
+      <div className="max-w-6xl mx-auto flex gap-10 items-start justify-center">
+      <div className="flex-1 min-w-0 max-w-3xl space-y-6">
         <div>
           <h2 className="font-display text-xl font-semibold">Documentos</h2>
           <p className="text-sm text-[#8b8b93] mt-1">Notas y formularios para presentar en la facultad. Descargalos, completalos y presentalos en término.</p>
@@ -162,6 +164,9 @@ export default function Documentos({ esAdmin = false }) {
             {documentos.length === 0 && <p className="text-sm text-[#8b8b93]">Todavía no hay documentos.</p>}
           </ul>
         )}
+      </div>
+      <JulietteEscena escena="estudiando" mensajes={FRASES.documentos} size={210}
+                      className="hidden lg:flex sticky top-6 flex-shrink-0" />
       </div>
     </div>
   )

@@ -5,7 +5,7 @@
  * Los turnos de examen se editan en el panel, pestaña "Mesas".
  */
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import { actualizarEvento, borrarEvento, crearEvento, listarCalendario, listarMesasFechas } from '../api'
 import { Celda, celda } from './GrillaHorarios'
 import { boton, campo, errorDe, tarjeta } from './ui'

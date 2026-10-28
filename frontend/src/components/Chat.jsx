@@ -14,6 +14,7 @@ import {
 import Calendario from './Calendario'
 import Documentos from './Documentos'
 import Juliette from './Juliette'
+import JulietteEscena, { FRASES } from './JulietteEscena'
 import MensajeBurbuja from './MensajeBurbuja'
 import Panel from './Panel'
 import Sugerir from './Sugerir'
@@ -33,6 +34,9 @@ const PREGUNTAS_EJEMPLO = [
 
 // La UI solo oculta el acceso: los permisos reales se validan en el backend
 const TIENE_PANEL = ['MOD', 'ADMIN']
+
+// Logo de siempre: arriba a la izquierda (Juliette acompaña en el chat)
+const LOGO_URL = 'https://res.cloudinary.com/dol1ba0ld/image/upload/v1787954474/asd/Preguntale_a_UTNIA_xwocbf.png'
 
 function ahora(fecha = new Date()) {
   return new Date(fecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
@@ -202,7 +206,8 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
 
         {/* Logo + nombre */}
         <div className="flex items-center gap-2.5 px-3 mb-6">
-          <Juliette size={34} titulo="Juliette" />
+          <img src={LOGO_URL} alt="Juliette" width={34} height={34}
+               className="rounded-full flex-shrink-0 object-cover" style={{ width: 34, height: 34 }} />
           <span className="hidden md:block font-display font-semibold text-[15px] tracking-tight text-[#f4f4f5]">
             Juliette
           </span>
@@ -308,9 +313,13 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
         </div>
       ) : vista === 'calendario' ? (
         <div className="flex-1 overflow-y-auto bg-[#0a0a0c] text-[#f4f4f5] font-body p-6 [color-scheme:dark]">
-          <div className="max-w-3xl mx-auto space-y-4">
-            <h2 className="font-display text-xl font-semibold">Calendario académico</h2>
-            <Calendario />
+          <div className="max-w-6xl mx-auto flex gap-10 items-start justify-center">
+            <div className="flex-1 min-w-0 max-w-3xl space-y-4">
+              <h2 className="font-display text-xl font-semibold">Calendario académico</h2>
+              <Calendario />
+            </div>
+            <JulietteEscena escena="agenda" mensajes={FRASES.calendario} size={210}
+                            className="hidden lg:flex sticky top-6 flex-shrink-0" />
           </div>
         </div>
       ) : vista === 'sugerir' ? (

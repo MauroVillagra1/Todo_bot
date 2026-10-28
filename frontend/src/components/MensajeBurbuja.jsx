@@ -20,6 +20,8 @@ import { votarRespuesta } from '../api'
 import Juliette from './Juliette'
 
 const SIN_RESPUESTA = /^(No encontré información|No pude generar la respuesta)/
+// Las citas [1][2] quedan feas en el texto: las fuentes se listan abajo
+const sinCitas = texto => texto.replace(/\s*\[\d+\]/g, '')
 const MS_POR_PASO = 18
 
 // Estado de confianza de la respuesta (RAG-03)
@@ -51,10 +53,9 @@ function DetalleRespuesta({ mensaje }) {
         {mensaje.fecha && <span className="text-[#8b8b93]">Información del {fechaCorta(mensaje.fecha)}</span>}
       </div>
       {fuentes.length > 0 && (
-        <ol className="text-[11px] text-[#8b8b93] space-y-0.5">
+        <ul className="text-[11px] text-[#8b8b93] space-y-0.5 list-disc pl-4">
           {fuentes.map(f => (
             <li key={f.numero}>
-              [{f.numero}]{' '}
               <a href={f.url} target="_blank" rel="noopener noreferrer"
                  className="text-[#f2894f] underline underline-offset-2 hover:text-[#e8592e]">
                 {f.titulo}
@@ -62,7 +63,7 @@ function DetalleRespuesta({ mensaje }) {
               {' — '}{f.fuente}{f.fecha && `, ${fechaCorta(f.fecha)}`}
             </li>
           ))}
-        </ol>
+        </ul>
       )}
     </div>
   )
@@ -164,7 +165,8 @@ export default function MensajeBurbuja({ mensaje, onAlternativa, onAnimado }) {
   const esError    = mensaje.tipo === 'error'
   const esAsistente = mensaje.tipo === 'asistente'
   const [voto, setVoto] = useState(null)
-  const [texto, escrito] = useEscritura(mensaje.texto, !!mensaje.animar && !esUsuario, () => onAnimado?.(mensaje.id))
+  const [texto, escrito] = useEscritura(esUsuario ? mensaje.texto : sinCitas(mensaje.texto),
+                                        !!mensaje.animar && !esUsuario, () => onAnimado?.(mensaje.id))
 
   const animo = !escrito ? 'talk'
     : voto === 1 ? 'happy'

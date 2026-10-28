@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react'
 import { crearSugerencia, misSugerencias } from '../api'
 import { boton, campo, errorDe, fechaHora, tarjeta } from './ui'
+import JulietteEscena, { FRASES } from './JulietteEscena'
 
 const VACIA = { titulo: '', contenido: '', url: '' }
 const ESTADOS = {
@@ -47,7 +48,8 @@ export default function Sugerir() {
         </p>
       </div>
       <div className="flex-1 overflow-y-auto p-6">
-        <div className="max-w-3xl mx-auto space-y-6">
+        <div className="max-w-6xl mx-auto flex gap-10 items-start justify-center">
+        <div className="flex-1 min-w-0 max-w-3xl space-y-6">
           <form onSubmit={enviar} className={`${tarjeta} space-y-3`}>
             <input required minLength={3} maxLength={300} placeholder="Título (ej. Cambio de aula de Física I en la 1K01)"
                    value={form.titulo} onChange={cambiar('titulo')} className={campo} />
@@ -80,6 +82,9 @@ export default function Sugerir() {
               </ul>
             </div>
           )}
+        </div>
+        <JulietteEscena escena="ideas" mensajes={FRASES.sugerir} size={210}
+                        className="hidden lg:flex sticky top-6 flex-shrink-0" />
         </div>
       </div>
     </div>
