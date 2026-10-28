@@ -209,10 +209,10 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'USUARIO' },
 
         {/* Logo + nombre */}
         <div className="flex items-center gap-2.5 px-3 mb-6">
-          <img src={LOGO_URL} alt="Juliette" width={34} height={34}
+          <img src={LOGO_URL} alt="UTNIA" width={34} height={34}
                className="rounded-full flex-shrink-0 object-cover" style={{ width: 34, height: 34 }} />
           <span className="hidden md:block font-display font-semibold text-[15px] tracking-tight text-[#f4f4f5]">
-            Juliette
+            UTNIA
           </span>
         </div>
 
