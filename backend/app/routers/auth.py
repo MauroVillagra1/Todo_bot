@@ -26,7 +26,7 @@ from app.core.tokens import TokenFactory, TokenInvalido, tokens_de_sesion
 from app.models.codigo import CodigoVerificacion, PropositoCodigoEnum as P
 from app.models.usuario import RolEnum, Usuario
 from app.schemas.auth import (
-    CodigoIngresado, LoginRequest, Mensaje, RecuperacionConfirmacion, RecuperacionSolicitud,
+    CambioPassword, CodigoIngresado, LoginRequest, Mensaje, PerfilUpdate, RecuperacionConfirmacion, RecuperacionSolicitud,
     RefreshRequest, RegistroSolicitud, TokenResponse,
 )
 from app.schemas.usuario import UsuarioRead, es_email_institucional
@@ -110,6 +110,30 @@ def logout(current_user: Usuario = Depends(get_current_user), db: Session = Depe
 def get_me(current_user: Usuario = Depends(get_current_user)):
     """Devuelve los datos del usuario que realizó la petición."""
     return current_user
+
+
+@router.patch("/me", response_model=UsuarioRead)
+def editar_perfil(datos: PerfilUpdate, current_user: Usuario = Depends(get_current_user),
+                  db: Session = Depends(get_db)):
+    """Mi perfil: por ahora solo el nombre y apellido (el mail institucional no se cambia)."""
+    current_user.nombre = datos.nombre
+    db.commit()
+    db.refresh(current_user)
+    return current_user
+
+
+@router.post("/me/password", response_model=TokenResponse)
+def cambiar_password(datos: CambioPassword, current_user: Usuario = Depends(get_current_user),
+                     db: Session = Depends(get_db)):
+    """Pide la contraseña actual. Cierra las demás sesiones y devuelve una nueva para este dispositivo."""
+    if not verify_password(datos.actual, current_user.password_hash):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "La contraseña actual no es correcta.")
+    if verify_password(datos.nueva, current_user.password_hash):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "La contraseña nueva tiene que ser distinta de la actual.")
+    current_user.password_hash = hash_password(datos.nueva)
+    current_user.version_sesion += 1
+    db.commit()
+    return _sesion(current_user)
 
 
 # ── Códigos por mail (registro y recuperación) ────────────────────────────────
@@ -216,7 +240,7 @@ def solicitar_registro(datos: RegistroSolicitud, db: Session = Depends(get_db)):
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, espera)
     # La cuenta todavía no existe: nombre y contraseña (hasheada) esperan junto al código
     _enviar_codigo(db, datos.email, P.REGISTRO,
-                   {"nombre": datos.nombre.strip(), "password_hash": hash_password(datos.password)})
+                   {"nombre": datos.nombre_completo, "password_hash": hash_password(datos.password)})
     return Mensaje(mensaje=f"Te enviamos un código de 6 dígitos a {datos.email}.")
 
 

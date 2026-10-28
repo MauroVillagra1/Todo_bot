@@ -1,7 +1,10 @@
 """
 Schemas para autenticación (login y respuesta de token).
 """
-from pydantic import BaseModel, EmailStr, Field, field_validator
+import re
+from typing import Annotated
+
+from pydantic import AfterValidator, BaseModel, EmailStr, Field, field_validator
 
 from app.schemas.usuario import EmailInstitucional, Password, UsuarioRead
 
@@ -29,11 +32,45 @@ class RefreshRequest(BaseModel):
     refresh_token: str = Field(..., max_length=2000)
 
 
+def _limpiar_nombre(v: str) -> str:
+    """Letras (con tildes), espacios, apóstrofo y guion; sin espacios de más."""
+    v = re.sub(r"\s+", " ", v).strip()
+    if not re.fullmatch(r"[A-Za-zÀ-ÖØ-öø-ÿ' -]+", v):
+        raise ValueError("Usá solo letras")
+    return v
+
+
+def _nombre_completo(v: str) -> str:
+    v = _limpiar_nombre(v)
+    if len(v.split()) < 2:
+        raise ValueError("Escribí tu nombre y apellido")
+    return v
+
+
+Nombre = Annotated[str, Field(min_length=2, max_length=74), AfterValidator(_limpiar_nombre)]
+NombreCompleto = Annotated[str, Field(min_length=5, max_length=150), AfterValidator(_nombre_completo)]
+
+
 class RegistroSolicitud(BaseModel):
     """Paso 1 del registro: datos de la cuenta; se manda un código al mail."""
-    nombre: str = Field(..., min_length=2, max_length=150)
+    nombre: Nombre
+    apellido: Nombre
     email: EmailInstitucional
     password: Password
+
+    @property
+    def nombre_completo(self) -> str:
+        return f"{self.nombre} {self.apellido}"
+
+
+class PerfilUpdate(BaseModel):
+    """Lo que cada usuario puede cambiar de su cuenta (el mail institucional no)."""
+    nombre: NombreCompleto
+
+
+class CambioPassword(BaseModel):
+    actual: str = Field(..., max_length=200)
+    nueva: Password
 
 
 class CodigoIngresado(BaseModel):

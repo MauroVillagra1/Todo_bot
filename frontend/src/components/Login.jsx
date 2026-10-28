@@ -13,7 +13,7 @@ import {
   confirmarRecuperacion, login, solicitarRecuperacion, solicitarRegistro, verificarRegistro,
 } from '../api'
 import fotoFacultad from '../assets/facultad-utn-frt.jpg'
-import JulietteEscena, { FRASES } from './JulietteEscena'
+import CampoClave from './CampoClave'
 
 const LOGO_URL = 'https://res.cloudinary.com/dol1ba0ld/image/upload/v1787954474/asd/Preguntale_a_UTNIA_xwocbf.png'
 const DOMINIOS = ['alu.frt.utn.edu.ar', 'doc.frt.utn.edu.ar']
@@ -52,7 +52,7 @@ function Campo({ etiqueta, ayuda, ...props }) {
   return (
     <div>
       <label className="block font-body text-xs font-medium text-[#8b8b93] mb-1.5">{etiqueta}</label>
-      <input {...props} className={campo} />
+      {props.type === 'password' ? <CampoClave {...props} className={campo} /> : <input {...props} className={campo} />}
       {ayuda && <p className="font-body text-[11px] text-[#4b4b53] mt-1">{ayuda}</p>}
     </div>
   )
@@ -73,6 +73,7 @@ function emailValido(email) {
 export default function Login({ onLogin }) {
   const [pantalla, setPantalla] = useState('login')
   const [nombre,   setNombre]   = useState('')
+  const [apellido, setApellido] = useState('')
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
   const [repetida, setRepetida] = useState('')
@@ -103,6 +104,7 @@ export default function Login({ onLogin }) {
   }
 
   function validarCuenta() {
+    if (nombre.trim().length < 2 || apellido.trim().length < 2) return 'Completá tu nombre y tu apellido.'
     if (!emailValido(email)) return 'Usá tu mail @alu.frt.utn.edu.ar o @doc.frt.utn.edu.ar.'
     if (password.length < 8 || !/\d/.test(password)) return 'La contraseña necesita al menos 8 caracteres y un número.'
     if (password !== repetida) return 'Las contraseñas no coinciden.'
@@ -122,7 +124,7 @@ export default function Login({ onLogin }) {
     const problema = validarCuenta()
     if (problema) return setError(problema)
     ejecutar(async () => {
-      const data = await solicitarRegistro(nombre, email, password)
+      const data = await solicitarRegistro(nombre.trim(), apellido.trim(), email, password)
       ir('verificar', data.mensaje)
     }, 'No se pudo enviar el código.')
   }
@@ -137,7 +139,7 @@ export default function Login({ onLogin }) {
 
   function reenviarRegistro() {
     ejecutar(async () => {
-      const data = await solicitarRegistro(nombre, email, password)
+      const data = await solicitarRegistro(nombre.trim(), apellido.trim(), email, password)
       setAviso(data.mensaje)
     }, 'No se pudo reenviar el código.')
   }
@@ -228,8 +230,12 @@ export default function Login({ onLogin }) {
 
           {pantalla === 'registro' && (
             <form onSubmit={handleRegistro} className="space-y-4">
-              <Campo etiqueta="Nombre y apellido" value={nombre} onChange={e => setNombre(e.target.value)}
-                     placeholder="Ana Pérez" required minLength={2} maxLength={150} autoFocus autoComplete="name" />
+              <div className="grid grid-cols-2 gap-3">
+                <Campo etiqueta="Nombre" value={nombre} onChange={e => setNombre(e.target.value)}
+                       placeholder="Ana" required minLength={2} maxLength={74} autoFocus autoComplete="given-name" />
+                <Campo etiqueta="Apellido" value={apellido} onChange={e => setApellido(e.target.value)}
+                       placeholder="Pérez" required minLength={2} maxLength={74} autoComplete="family-name" />
+              </div>
               <Campo etiqueta="Email institucional" type="email" value={email} onChange={e => setEmail(e.target.value)}
                      placeholder="tu@alu.frt.utn.edu.ar" required autoComplete="email"
                      ayuda="Solo @alu.frt.utn.edu.ar o @doc.frt.utn.edu.ar." />
@@ -304,9 +310,6 @@ export default function Login({ onLogin }) {
         <p className="absolute bottom-8 right-10 font-display text-lg font-semibold text-[#f4f4f5]/90 tracking-tight">
           UTN · Facultad Regional Tucumán
         </p>
-        {/* Juliette programando (en login, registro y recuperar contraseña) */}
-        <JulietteEscena escena="programando" mensajes={FRASES.login} size={210}
-                        className="flex absolute bottom-16 left-1/2 -translate-x-1/2" />
       </div>
     </div>
   )

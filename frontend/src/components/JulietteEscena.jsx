@@ -1,7 +1,7 @@
 /**
  * JulietteEscena — Juliette en una escena (solo en pantallas de PC), con un globo de diálogo que
  * muestra frases al azar: una nueva cada 30 segundos, escrita de a poco.
- *   'programando' → con la notebook (login, registro y recuperar contraseña)
+ *   'programando' → con la notebook (por ahora sin usar)
  *   'estudiando'  → con un cuaderno de notas (Documentos)
  *   'agenda'      → con el calendario del día (Calendario)
  *   'ideas'       → con una lamparita (Sugerir dato)
@@ -189,16 +189,6 @@ export default function JulietteEscena({ escena, mensajes, size = 220, className
 
 // Frases de cada escena
 export const FRASES = {
-  login: [
-    'La materia que más se me complica es Análisis Matemático II',
-    'Obvio que no compilaba, ¡si me faltaba un ;!',
-    '¿Java será lo mismo que JavaScript?',
-    '6 es nota, lo demás es lujo',
-    'Un DELETE sin WHERE… ¡ay, Dios! ¿Qué hice?',
-    'Dormir 8 horas es de débiles',
-    'Esta noche: café y código',
-    'No cualquiera es ingenier@',
-  ],
   documentos: [
     'Asegurate de que no se te venza el plazo',
     '¿También odiás cuando la fila del Departamento Alumnos es muy larga?',

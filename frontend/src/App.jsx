@@ -44,5 +44,5 @@ export default function App() {
     return <Login onLogin={handleLogin} />
   }
 
-  return <Chat usuario={usuario} onLogout={handleLogout} />
+  return <Chat usuario={usuario} onLogout={handleLogout} onPerfil={setUsuario} />
 }

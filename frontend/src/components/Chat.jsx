@@ -17,6 +17,7 @@ import Juliette from './Juliette'
 import JulietteEscena, { FRASES } from './JulietteEscena'
 import MensajeBurbuja from './MensajeBurbuja'
 import Panel from './Panel'
+import Perfil from './Perfil'
 import Sugerir from './Sugerir'
 
 const ROLES_DISPLAY = {
@@ -66,7 +67,7 @@ function AvisoParo({ aviso, onCerrar }) {
   )
 }
 
-export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' }, onLogout = () => {} }) {
+export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' }, onLogout = () => {}, onPerfil = () => {} }) {
   const [mensajes, setMensajes]             = useState([])
   const [input, setInput]                   = useState('')
   const [escribiendo, setEscribiendo]       = useState(false)
@@ -278,7 +279,9 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
 
         {/* Usuario / logout */}
         <div className="px-3 pt-4 border-t border-[#1e1e22]">
-          <div className="flex items-center gap-2.5 mb-3">
+          <button onClick={() => setVista('perfil')} title="Mi perfil"
+                  className={`w-full flex items-center gap-2.5 mb-2 p-1.5 -mx-1.5 rounded-lg text-left transition-colors ${
+                    vista === 'perfil' ? 'bg-[#e8592e]/15' : 'hover:bg-[#17171b]'}`}>
             <div className="w-8 h-8 rounded-full bg-[#1a1a1e] border border-[#232327] flex items-center justify-center flex-shrink-0">
               <User size={14} className="text-[#8b8b93]" />
             </div>
@@ -289,8 +292,9 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
               <span className={`inline-block text-[10px] px-1.5 py-0.5 mt-0.5 rounded-full font-medium ${rolInfo.color}`}>
                 {rolInfo.label}
               </span>
+              <span className="block text-[10px] text-[#6b6b73] mt-0.5">Mi perfil</span>
             </div>
-          </div>
+          </button>
           <button
             onClick={onLogout}
             className="w-full flex items-center justify-center md:justify-start gap-2 text-xs font-body
@@ -306,6 +310,10 @@ export default function Chat({ usuario = { nombre: 'Invitado', rol: 'MIEMBRO' },
       {vista === 'panel' && tienePanel ? (
         <div className="flex-1 overflow-hidden">
           <Panel usuario={usuario} darkMode />
+        </div>
+      ) : vista === 'perfil' ? (
+        <div className="flex-1 overflow-hidden">
+          <Perfil usuario={usuario} onActualizado={onPerfil} />
         </div>
       ) : vista === 'documentos' ? (
         <div className="flex-1 overflow-hidden">

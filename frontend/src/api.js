@@ -77,6 +77,18 @@ export async function login(email, password) {
   return data  // { access_token, refresh_token, token_type, usuario }
 }
 
+// ── Mi perfil ─────────────────────────────────────────────────────────────────
+
+/** Solo el nombre y apellido: el mail institucional no se cambia. */
+export const actualizarPerfil = nombre => api.patch('/api/v1/auth/me', { nombre }).then(r => r.data)
+
+/** Cierra las demás sesiones; devuelve una sesión nueva para este dispositivo. */
+export async function cambiarPassword(actual, nueva) {
+  const { data } = await api.post('/api/v1/auth/me/password', { actual, nueva })
+  guardarSesion(data)
+  return data
+}
+
 /** Cierra la sesión en el servidor (revoca los tokens en todos los dispositivos) y en este navegador. */
 export async function cerrarSesion() {
   try { await api.post('/api/v1/auth/logout') } catch { /* sin conexión o ya vencida: igual se borra */ }
@@ -84,8 +96,8 @@ export async function cerrarSesion() {
 }
 
 /** Paso 1 del registro: manda un código de 6 dígitos al mail institucional. */
-export async function solicitarRegistro(nombre, email, password) {
-  const { data } = await api.post('/api/v1/auth/registro', { nombre, email, password })
+export async function solicitarRegistro(nombre, apellido, email, password) {
+  const { data } = await api.post('/api/v1/auth/registro', { nombre, apellido, email, password })
   return data  // { mensaje }
 }
 

@@ -13,7 +13,7 @@ from app.services.email import EmailNoConfigurado
 from conftest import PASSWORD
 
 ALU = "ana.perez@alu.frt.utn.edu.ar"
-DATOS = {"nombre": "Ana Pérez", "email": ALU, "password": "clave1234"}
+DATOS = {"nombre": "Ana", "apellido": "Pérez", "email": ALU, "password": "clave1234"}
 
 
 @pytest.fixture
@@ -134,3 +134,35 @@ def test_recuperar_exige_contrasena_valida(client, mails, crear_usuario):
     r = client.post("/api/v1/auth/recuperar/confirmar",
                     json={"email": ALU, "codigo": mails[-1][1], "password": "sinnumeros"})
     assert r.status_code == 422
+
+
+def test_registro_pide_nombre_y_apellido(client):
+    sin_apellido = {k: v for k, v in DATOS.items() if k != "apellido"}
+    assert client.post("/api/v1/auth/registro", json=sin_apellido).status_code == 422
+    assert client.post("/api/v1/auth/registro", json={**DATOS, "apellido": "P3rez"}).status_code == 422
+
+
+def test_perfil_cambia_nombre_pero_no_el_mail(client, crear_usuario):
+    from conftest import auth
+    u = crear_usuario("a@alu.frt.utn.edu.ar")
+    r = client.patch("/api/v1/auth/me", json={"nombre": "  María   José Gómez ", "email": "otro@alu.frt.utn.edu.ar"},
+                     headers=auth(u))
+    assert r.status_code == 200
+    assert r.json()["nombre"] == "María José Gómez" and r.json()["email"] == "a@alu.frt.utn.edu.ar"
+    assert client.patch("/api/v1/auth/me", json={"nombre": "María"}, headers=auth(u)).status_code == 422
+
+
+def test_cambiar_password_pide_la_actual_y_cierra_otras_sesiones(client, crear_usuario):
+    from conftest import PASSWORD, auth
+    u = crear_usuario("a@alu.frt.utn.edu.ar")
+    viejo = auth(u)
+    assert client.post("/api/v1/auth/me/password", json={"actual": "mal12345", "nueva": "nueva1234"},
+                       headers=viejo).status_code == 400
+    assert client.post("/api/v1/auth/me/password", json={"actual": PASSWORD, "nueva": "sinnumeros"},
+                       headers=viejo).status_code == 422
+    r = client.post("/api/v1/auth/me/password", json={"actual": PASSWORD, "nueva": "nueva1234"}, headers=viejo)
+    assert r.status_code == 200
+    assert client.get("/api/v1/auth/me", headers=viejo).status_code == 401  # otras sesiones cerradas
+    nuevo = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    assert client.get("/api/v1/auth/me", headers=nuevo).status_code == 200  # esta sigue
+    assert client.post("/api/v1/auth/login", json={"email": u.email, "password": "nueva1234"}).status_code == 200
